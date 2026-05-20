@@ -1,0 +1,56 @@
+# Will be used in title / Headings
+Name = "EVE FORWARD AUTH TEST"
+
+# From EVE 
+App_ID = "1234ABCD"
+App_secret = "secret1" 
+Port = 80
+
+[Server]
+
+# Domain where auth is accessible - used for callback handling
+Domain = "auth.example.com"
+
+#For the auth cookie
+Base_Domain = "example.com"
+
+# Use https?
+is_Secure = false
+
+# Prefix is added here: https://auth.example.com/<PREFIX>/login and https://auth.example.com/<PREFIX>/callback
+# Do not include leading or trailing slashes in this string
+Prefix = ""
+
+# Forwarded header populated with character name, char ID and role from database
+User_Header = "X-Authenticated-User"
+UID_Header = "X-Authenticated-UID"
+Role_Header = "X-Authenticated-Role"
+
+# After auth, only URLs with these values are valid redirects
+# Do not include trailing '/'
+# The '/success' page on the auth server itself is also a valid redirect
+Redirect_Whitelist = ["https://service-behind-auth.example.com/homepage.html"]
+
+[Overrides]
+
+# These people will always be allowed to login, regardless of corp/alliance affiliation
+# EVE Character IDs only
+Super_Admin_IDs = ["0","1"]
+
+# Alliance(s) to check for (By ID)
+# These alliances will be allowed to pass through the reverse proxy
+# All members in these alliance(s) will be given Database.Base_Role by default
+# Other roles can be given by updating the database entry for specific members
+Alliance_Allow = ["1111","2222"]
+
+# Behaviour is same as alliance, use if you want to allow granular corp-based access instead of alliance-wide.
+Corp_Allow = ["1234","5678"]
+
+[Database]
+
+# Used to store session data
+Postgres_Connection_String = ""
+DB_Name = ""
+
+# Default role assignment for line members. Passed in Server.Role_Header to the upstream.
+Default_Role = "member"
