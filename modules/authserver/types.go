@@ -4,8 +4,9 @@ import (
 	"context"
 	"eve-forward-auth/modules/esiservice"
 	"eve-forward-auth/types"
-	"log"
 	"sync"
+
+	log "github.com/charmbracelet/log"
 )
 
 type AuthServer struct {

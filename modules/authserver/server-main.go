@@ -1,24 +1,23 @@
 package authserver
 
 import (
-	"context"
 	"eve-forward-auth/modules/esiservice"
 	"eve-forward-auth/types"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
-	"sync"
 	"time"
+
+	log "github.com/charmbracelet/log"
 )
 
-func NewAuthServer(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *sync.WaitGroup, EVEClient *esiservice.ESIService, Config types.Config) *AuthServer {
+func NewAuthServer(logger *log.Logger /*ShutdownSignal context.Context, CleanupTracker *sync.WaitGroup,*/, EVEClient *esiservice.ESIService, Config types.Config) *AuthServer {
 	return &AuthServer{
-		logger:         logger,
-		ShutdownSignal: ShutdownSignal,
-		CleanupTracker: CleanupTracker,
-		EVEClient:      EVEClient,
-		config:         Config,
+		logger: logger,
+		//ShutdownSignal: ShutdownSignal,
+		//CleanupTracker: CleanupTracker,
+		EVEClient: EVEClient,
+		config:    Config,
 	}
 }
 
