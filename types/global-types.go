@@ -1,5 +1,12 @@
 package types
 
+import (
+	"sync"
+	"time"
+
+	"golang.org/x/oauth2"
+)
+
 type Config struct {
 	Name       string
 	App_ID     string
@@ -25,7 +32,23 @@ type Config struct {
 
 	Database struct {
 		Postgres_Connection_String string
-		DB_Name                    string
 		Default_Role               string
 	}
+}
+
+type ActiveAuthenticatedSession struct {
+	Mutex      sync.RWMutex
+	Token      *oauth2.Token
+	Name       string
+	CharID     string
+	CorpID     string
+	AllianceID string
+	Role       string
+	RefreshEVE time.Time
+	RefreshDB  time.Time
+}
+
+type ActiveAuthenticatedSessions struct {
+	Mutex    sync.RWMutex
+	Sessions map[string]*ActiveAuthenticatedSession
 }

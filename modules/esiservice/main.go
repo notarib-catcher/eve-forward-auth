@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"eve-forward-auth/modules/database"
 	"eve-forward-auth/types"
 	"io"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 )
 
 var scopes = []string{"publicData"}
+var preventDoS = make(map[string]struct{})
 
 func isValidUrl(toTest string) bool {
 	_, err := url.ParseRequestURI(toTest)
@@ -31,11 +33,12 @@ func isValidUrl(toTest string) bool {
 	return true
 }
 
-func NewESIService(logger *log.Logger, HostedAt string, Redirect_URL string, MemcachedAddresses []string, Config types.Config) *ESIService {
+func NewESIService(logger *log.Logger, HostedAt string, Redirect_URL string, Sessions *types.ActiveAuthenticatedSessions, Config *types.Config, DBAPI *database.DatabaseAPI) *ESIService {
 
 	nonCachingClient := &http.DefaultClient
 	auth := goesi.NewSSOAuthenticatorV2(*nonCachingClient, Config.App_ID, Config.App_Secret, Redirect_URL, scopes)
 
+	logger.Info("Initialized ESI handler")
 	return &ESIService{
 		logger:           logger,
 		SSOAuthenticator: auth,
@@ -43,12 +46,10 @@ func NewESIService(logger *log.Logger, HostedAt string, Redirect_URL string, Mem
 			sessions: make(map[string]*AuthSession),
 			mutex:    sync.Mutex{},
 		},
-		HostedAt: HostedAt,
-		ActiveLoggedInSessions: &ActiveAuthenticatedSessions{
-			sessions: make(map[string]*ActiveAuthenticatedSession),
-			mutex:    sync.RWMutex{},
-		},
-		config: Config,
+		HostedAt:               HostedAt,
+		ActiveLoggedInSessions: Sessions,
+		config:                 Config,
+		databaseAPI:            DBAPI,
 	}
 }
 
@@ -137,22 +138,15 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 	rand.Read(b)
 	SessionCookie := base64.URLEncoding.EncodeToString(b)
 
-	NewSession := &ActiveAuthenticatedSession{
-		token: token,
-		mutex: sync.RWMutex{},
+	NewSession := &types.ActiveAuthenticatedSession{
+		Token:      token,
+		Mutex:      sync.RWMutex{},
+		RefreshDB:  time.Now(),
+		RefreshEVE: time.Now(),
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:    "evefa_session_token",
-		Domain:  es.config.Server.Domain,
-		Value:   SessionCookie,
-		Expires: time.Now().Add(180 * 24 * time.Hour), // 6 months
-		Path:    "/",
-	})
-
-	//TODO: store this cookie in database
-
 	err = es.UpdateEVEInfo(NewSession, true)
+
 	if err != nil {
 		es.logger.Error("Error while updating info from ESI", "error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -164,24 +158,34 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	es.ActiveLoggedInSessions.mutex.Lock()
-	es.ActiveLoggedInSessions.sessions[SessionCookie] = NewSession
-	es.ActiveLoggedInSessions.mutex.Unlock()
+	es.ActiveLoggedInSessions.Mutex.Lock()
+	es.ActiveLoggedInSessions.Sessions[SessionCookie] = NewSession
+	es.ActiveLoggedInSessions.Mutex.Unlock()
+
+	http.SetCookie(w, &http.Cookie{
+		Name:    "evefa_session_token",
+		Domain:  es.config.Server.Base_Domain,
+		Value:   SessionCookie,
+		Expires: time.Now().Add(180 * 24 * time.Hour), // 6 months
+		Path:    "/",
+	})
+
+	es.databaseAPI.SyncMemory(SessionCookie, true)
 
 	http.Redirect(w, r, "http"+(If(es.config.Server.Is_Secure, "s", ""))+"://"+es.config.Server.Domain+"/"+es.config.Server.Prefix+"/success?redirect="+redirect, 200)
 }
 
-func (es *ESIService) UpdateEVEInfo(StoredSession *ActiveAuthenticatedSession, force bool) error {
+func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSession, force bool) error {
 
-	StoredSession.mutex.Lock()
-	defer StoredSession.mutex.Unlock()
+	StoredSession.Mutex.Lock()
+	defer StoredSession.Mutex.Unlock()
 	if !force {
 		if time.Now().Before(StoredSession.RefreshEVE) {
 			return nil
 		}
 	}
 
-	StoredToken := *StoredSession.token
+	StoredToken := *StoredSession.Token
 	tokenSrc := es.SSOAuthenticator.TokenSource(&StoredToken)
 	claims, err := es.SSOAuthenticator.Verify(tokenSrc)
 
@@ -200,66 +204,88 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *ActiveAuthenticatedSession, f
 		return err
 	}
 
-	var result map[string]interface{}
+	type extractInfo struct {
+		CorpID     int `json:"corporation_id"`
+		AllianceID int `json:"alliance_id"`
+	}
+
+	var result extractInfo
 	err = json.Unmarshal(body, &result)
 	if err != nil {
 		return err
 	}
 
-	AllianceID := strconv.Itoa(result["alliance_id"].(int))
-	CorporationID := strconv.Itoa(result["corporation_id"].(int))
+	AllianceID := strconv.Itoa(result.AllianceID)
+	CorporationID := strconv.Itoa(result.CorpID)
 	token, err := tokenSrc.Token()
 
-	StoredSession.mutex.Lock()
+	es.logger.Debug("Fetched character"+strconv.Itoa(int(claims.CharacterID)), "name", claims.CharacterName, "corp", CorporationID, "alliance", AllianceID)
+
 	StoredSession.AllianceID = AllianceID
 	StoredSession.CorpID = CorporationID
 	StoredSession.CharID = strconv.Itoa(int(claims.CharacterID))
 	StoredSession.Name = claims.CharacterName
 	StoredSession.RefreshEVE = time.Now().Add(12 * time.Hour)
-	StoredSession.token = token
-	StoredSession.mutex.Unlock()
+	StoredSession.Token = token
 
-	//update DB here
+	es.logger.Debug("Stored character " + strconv.Itoa(int(claims.CharacterID)) + " to memory")
 
 	return nil
 
 }
 
-func (es *ESIService) VerifyUser(cookie string) *UserAuthDetails {
-	es.ActiveLoggedInSessions.mutex.RLock()
-	session := es.ActiveLoggedInSessions.sessions[cookie]
-	es.ActiveLoggedInSessions.mutex.RUnlock()
-	if session == nil {
+func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails {
+	if _, exists := preventDoS[cookie]; exists {
+		es.logger.Warn("User has attempted to login with a blacklisted cookie", "cookie", cookie)
 		return &UserAuthDetails{
 			Allow: false,
 		}
+	}
+	es.logger.Debug("Checking Logged in Sessions", "cookie", cookie)
+	es.ActiveLoggedInSessions.Mutex.RLock()
+	session := es.ActiveLoggedInSessions.Sessions[cookie]
+	es.ActiveLoggedInSessions.Mutex.RUnlock()
+	if session == nil {
+		es.logger.Debug("Session is nil", "cookie", cookie)
+		if doNotSync {
+			es.logger.Debug("Blacklisting cookie", "cookie", cookie)
+			preventDoS[cookie] = struct{}{}
+			return &UserAuthDetails{
+				Allow: false,
+			}
+		} else {
+			es.logger.Debug("Attempting DB sync", "cookie", cookie)
+			es.databaseAPI.SyncMemory(cookie, false)
+			return es.VerifyUser(cookie, true)
+		}
+
 	}
 
 	err := es.UpdateEVEInfo(session, false)
 
 	if err != nil {
 		es.logger.Error("Update Eve Info returned error - clearing stored session and denying", "cookie", cookie, "error", err)
-		es.ActiveLoggedInSessions.mutex.Lock()
-		delete(es.ActiveLoggedInSessions.sessions, cookie)
-		es.ActiveLoggedInSessions.mutex.Unlock()
+		es.ActiveLoggedInSessions.Mutex.Lock()
+		delete(es.ActiveLoggedInSessions.Sessions, cookie)
+		es.ActiveLoggedInSessions.Mutex.Unlock()
 
-		//TODO: Delete this entry from DB as well
+		es.databaseAPI.Delete(cookie)
 
 		return &UserAuthDetails{
 			Allow: false,
 		}
 	}
 
-	session.mutex.RLock()
+	session.Mutex.RLock()
 	DBUpdateTime := session.RefreshDB
 	User := session.CharID
 	UName := session.Name
 	Role := session.Role
-	session.mutex.RUnlock()
+	session.Mutex.RUnlock()
 
 	if time.Now().After(DBUpdateTime) {
-		// updateFromDB(cookie)
-		return es.VerifyUser(cookie)
+		es.databaseAPI.SyncMemory(cookie, false)
+		return es.VerifyUser(cookie, true)
 	}
 
 	final := &UserAuthDetails{
@@ -269,7 +295,7 @@ func (es *ESIService) VerifyUser(cookie string) *UserAuthDetails {
 		Role:  Role,
 	}
 
-	session.mutex.RLock()
+	session.Mutex.RLock()
 	for _, uid := range es.config.Overrides.Super_Admin_IDs {
 		if uid == session.CharID {
 			final.Allow = true
@@ -288,7 +314,7 @@ func (es *ESIService) VerifyUser(cookie string) *UserAuthDetails {
 		}
 	}
 
-	session.mutex.RUnlock()
+	session.Mutex.RUnlock()
 
 	return final
 }

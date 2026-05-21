@@ -50,7 +50,7 @@ Corp_Allow = ["1234","5678"]
 
 # Used to store session data
 Postgres_Connection_String = ""
-DB_Name = ""
+DB_Name = "exampleDB"
 
 # Default role assignment for line members. Passed in Server.Role_Header to the upstream.
 Default_Role = "member"

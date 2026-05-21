@@ -1,32 +1,76 @@
 package authserver
 
 import (
+	"context"
 	"eve-forward-auth/modules/esiservice"
 	"eve-forward-auth/types"
 	"net/http"
-	"path/filepath"
-	"strings"
+	"strconv"
+	"sync"
 	"time"
 
 	log "github.com/charmbracelet/log"
 )
 
-func NewAuthServer(logger *log.Logger /*ShutdownSignal context.Context, CleanupTracker *sync.WaitGroup,*/, EVEClient *esiservice.ESIService, Config types.Config) *AuthServer {
-	return &AuthServer{
-		logger: logger,
-		//ShutdownSignal: ShutdownSignal,
-		//CleanupTracker: CleanupTracker,
-		EVEClient: EVEClient,
-		config:    Config,
+func NewAuthServer(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *sync.WaitGroup, EVEClient *esiservice.ESIService, Config types.Config) *AuthServer {
+
+	a := &AuthServer{
+		logger:         logger,
+		ShutdownSignal: ShutdownSignal,
+		CleanupTracker: CleanupTracker,
+		EVEClient:      EVEClient,
+		config:         Config,
 	}
+
+	logger.Info("Setting handler functions")
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+	http.HandleFunc("/dologin", a.loginHandlerWrapper)
+	http.HandleFunc("/sso/callback", a.ssoCallbackWrapper)
+	http.HandleFunc("/check", a.handleChecks)
+	http.HandleFunc("/login", a.signinPage)
+	http.Handle("/", http.RedirectHandler("/login", 302))
+	logger.Info("Registered all handlers")
+
+	return a
+}
+
+func (a *AuthServer) StartServer() {
+	srv := &http.Server{
+		Addr:         ":" + strconv.Itoa(a.config.Port),
+		Handler:      nil,
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	a.CleanupTracker.Go(func() {
+		<-a.ShutdownSignal.Done()
+		a.logger.Info("Closing conections...")
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := srv.Shutdown(ctx)
+		if err != nil {
+			a.logger.Error("Server shutdown timeout exceeded!", "error", err)
+			err = srv.Close()
+			if err != nil {
+				a.logger.Error("Server close has errored!", "error", err)
+			}
+		}
+		a.logger.Info("Server closed")
+	})
+
+	a.logger.Info("Starting server", "port", a.config.Port)
+
+	srv.ListenAndServe()
 }
 
 func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("evefa_session_token")
 	if err != nil {
-		http.Redirect(w, r, "http"+(If(a.config.Server.Is_Secure, "s", ""))+"://"+a.config.Server.Domain+"/login", 307)
+		http.Redirect(w, r, "http"+(If(a.config.Server.Is_Secure, "s", ""))+"://"+a.config.Server.Domain+"/login", 302)
+		return
 	}
-	returnedVal := a.EVEClient.VerifyUser(cookie.Value)
+
+	returnedVal := a.EVEClient.VerifyUser(cookie.Value, false)
 
 	if !returnedVal.Allow {
 		http.SetCookie(w, &http.Cookie{
@@ -35,6 +79,7 @@ func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
 			Expires: time.Now().Add(-time.Hour), // Last hour - AKA Expired cookie - deletes this immediately
 			Path:    "/",
 		})
+		w.Header().Add("Content-Type", "")
 		http.Redirect(w, r, "http"+(If(a.config.Server.Is_Secure, "s", ""))+"://"+a.config.Server.Domain+"/login", 307)
 		return
 	}
@@ -54,45 +99,8 @@ func (a *AuthServer) ssoCallbackWrapper(w http.ResponseWriter, r *http.Request) 
 	a.EVEClient.HandleAfterSSO(w, r)
 }
 
-func staticHandler(w http.ResponseWriter, r *http.Request) {
-	const staticDir = "../../static"
-
-	urlPath := r.URL.Path
-
-	filename := strings.TrimPrefix(urlPath, "/static/")
-
-	if filename == "" {
-		http.Error(w, "Not Found", http.StatusNotFound)
-		return
-	}
-
-	cleaned := filepath.Clean(filename)
-
-	if strings.HasPrefix(cleaned, "..") ||
-		filepath.IsAbs(cleaned) ||
-		strings.ContainsRune(cleaned, 0) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	root, err := filepath.Abs(staticDir)
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	fullPath, err := filepath.Abs(filepath.Join(staticDir, cleaned))
-	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		return
-	}
-
-	if !strings.HasPrefix(fullPath, root+string(filepath.Separator)) {
-		http.Error(w, "Forbidden", http.StatusForbidden)
-		return
-	}
-
-	http.ServeFile(w, r, fullPath)
+func (s *AuthServer) signinPage(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "templates/signin.html")
 }
 
 func If[T any](cond bool, vtrue, vfalse T) T {
