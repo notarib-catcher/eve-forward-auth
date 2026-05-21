@@ -39,6 +39,9 @@ var queries = map[string]string{
 	"purgeByID": `DELETE FROM sessions
         WHERE CharacterID = $1`,
 
+	"deleteByCookie": `DELETE FROM sessions
+        WHERE Cookie = $1`,
+
 	"fetchFromDB": `SELECT CharacterID, CharacterName, CorporationID, AllianceID, AccessToken, RefreshToken, TokenExpiry, TokenType, Role, NextESISync
 			FROM sessions
 			WHERE Cookie = $1`,
@@ -46,4 +49,24 @@ var queries = map[string]string{
 	"fetchJustRoleFromDB": `SELECT Role
 		FROM sessions
 		WHERE Cookie = $1`,
+
+	"insertOrUpdateAll": `INSERT INTO sessions (Cookie, CharacterID, CharacterName, CorporationID, AllianceID, AccessToken, RefreshToken, TokenExpiry, TokenType, Role, NextESISync)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (Cookie) DO UPDATE
+		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, Role = $10, NextESISync = $11;
+
+		UPDATE sessions
+		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, Role = $10, NextESISync = $11
+		WHERE CharacterID = $2 AND Cookie != $1;
+	`,
+
+	"insertOrUpdateAllExceptRole": `INSERT INTO sessions (Cookie, CharacterID, CharacterName, CorporationID, AllianceID, AccessToken, RefreshToken, TokenExpiry, TokenType, NextESISync)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (Cookie) DO UPDATE
+		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, NextESISync = $10;
+
+		UPDATE sessions
+		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, NextESISync = $10;
+		WHERE CharacterID = $2 AND Cookie != $1;
+	`,
 }

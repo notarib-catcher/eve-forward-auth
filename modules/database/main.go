@@ -152,6 +152,7 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				//Full DB update required - no entry exists
+				//This is only reached occasionally, when a new entry is first made. As such, having a bit of a longer block is acceptable
 				s := &storedSession{
 					CharacterID:   session.CharID,
 					CorporationID: session.CorpID,
@@ -165,6 +166,49 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 					Role:          d.config.Database.Default_Role,
 				}
 
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				_, err = d.dbpool.Exec(ctx, queries["insertOrUpdateAll"],
+					cookie,
+					s.CharacterID,
+					s.CharacterName,
+					s.CorporationID,
+					s.AllianceID,
+					s.AccessToken,
+					s.RefreshToken,
+					s.TokenExpiry,
+					s.TokenType,
+					s.Role,
+					s.NextESISync)
+
+				if err != nil {
+					d.logger.Error("Could not insert new entry", "cookie", cookie, "error", err)
+					return
+				}
+
+				//Need to update roles again since roles would not get updated if entry does not exist
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_, err := d.dbpool.Exec(ctx, queries["fixRoles"])
+				if err != nil {
+					d.logger.Error("Could not update roles", "error", err)
+					return
+				}
+				//AAaand sync it again to memory
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				var DBRole string
+				err = d.dbpool.QueryRow(ctx, queries["fetchJustRoleFromDB"], cookie).Scan(
+					DBRole)
+
+				if err != nil {
+					d.logger.Error("Could not fetch roles", "cookie", cookie, "error", err)
+					return
+				}
+
+				session.Role = DBRole
+
 				return
 			} else {
 				d.logger.Error("Fetching DB entry (role check) fail", "error", err)
@@ -173,12 +217,63 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 		}
 
 		//Sync just role FROM DB and sync rest TO DB
+		session.Role = DBRole
+
+		s := &storedSession{
+			CharacterID:   session.CharID,
+			CorporationID: session.CorpID,
+			AllianceID:    session.AllianceID,
+			TokenExpiry:   session.Token.Expiry,
+			TokenType:     session.Token.TokenType,
+			AccessToken:   session.Token.AccessToken,
+			RefreshToken:  session.Token.RefreshToken,
+			NextESISync:   session.RefreshEVE,
+			CharacterName: session.Name,
+		}
+
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err = d.dbpool.Exec(ctx, queries["insertOrUpdateAllExceptRole"],
+			cookie,
+			s.CharacterID,
+			s.CharacterName,
+			s.CorporationID,
+			s.AllianceID,
+			s.AccessToken,
+			s.RefreshToken,
+			s.TokenExpiry,
+			s.TokenType,
+			s.NextESISync)
 
 	}
 }
 
 func (d *DatabaseAPI) Delete(cookie string) {
-	// Delete DB entry
+	//Checking with RLock as a DoS prevention measure
+	d.Sessions.Mutex.RLock()
+	session := d.Sessions.Sessions[cookie]
+	d.Sessions.Mutex.RUnlock()
+	if session == nil {
+		return
+	}
+
+	d.Sessions.Mutex.Lock()
+	defer d.Sessions.Mutex.Unlock()
+	session = d.Sessions.Sessions[cookie]
+	if session == nil {
+		return
+	}
+
+	delete(d.Sessions.Sessions, cookie)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := d.dbpool.Exec(ctx, queries["deleteByCookie"], cookie)
+	if err != nil {
+		d.logger.Error("Could not purge", "error", err)
+		return
+	}
+
 }
 
 func (d *DatabaseAPI) Purge(cookie string) {

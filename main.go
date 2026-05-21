@@ -17,8 +17,6 @@ import (
 	"github.com/pelletier/go-toml/v2"
 )
 
-const Project_version = "alpha0.3"
-
 func main() {
 	log.SetPrefix("CORE")
 	log.Info("FORWARD AUTH SERVER STARTING", "version", Project_version, "go", runtime.Version())
