@@ -65,15 +65,20 @@ func main() {
 	loggerDB := log.New(os.Stdout)
 	loggerDB.SetPrefix("[DBService]")
 	loggerDB.SetReportTimestamp(true)
-	DB := database.NewDB(loggerDB, ctxStop, &waitForCleanup, &sessions, &config)
+	loggerDB.SetLevel(log.DebugLevel)
 	loggerESI := log.New(os.Stdout)
 	loggerESI.SetPrefix("[ESIService]")
 	loggerESI.SetReportTimestamp(true)
 	loggerESI.SetLevel(log.DebugLevel)
-	ESI := esiservice.NewESIService(loggerESI, "http://localhost", "http://localhost/sso/callback", &sessions, &config, DB)
 	loggerAuth := log.New(os.Stdout)
 	loggerAuth.SetPrefix("[Server]")
 	loggerAuth.SetReportTimestamp(true)
+	loggerAuth.SetLevel(log.DebugLevel)
+
+	DB := database.NewDB(loggerDB, ctxStop, &waitForCleanup, &sessions, &config)
+
+	ESI := esiservice.NewESIService(loggerESI, "http://localhost", "http://localhost/sso/callback", &sessions, &config, DB)
+
 	Server := authserver.NewAuthServer(loggerAuth, ctxStop, &waitForCleanup, ESI, config)
 	log.Info("Initialisation complete!")
 	Server.StartServer() //This SHOULD block

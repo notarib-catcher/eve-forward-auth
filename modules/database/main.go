@@ -23,7 +23,12 @@ type DatabaseAPI struct {
 }
 
 func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *sync.WaitGroup, Sessions *types.ActiveAuthenticatedSessions, Config *types.Config) *DatabaseAPI {
-	dbpool, err := pgxpool.New(context.Background(), Config.Database.Postgres_Connection_String)
+
+	pgconfig, err := pgxpool.ParseConfig(Config.Database.Postgres_Connection_String)
+	if err != nil {
+		logger.Fatal("Could not parse postgres connection string", "error", err)
+	}
+	dbpool, err := pgxpool.NewWithConfig(context.Background(), pgconfig)
 	if err != nil {
 		logger.Fatal("Could not initialize database connection. Exiting.")
 		ShutdownSignal.Done()
@@ -50,6 +55,28 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 		}
 
 	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = dbpool.Exec(ctx, queries["InitSessions"])
+	if err != nil {
+		logger.Fatal("Could not init session table", "error", err)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = dbpool.Exec(ctx, queries["initRoleUpdates"])
+	if err != nil {
+		logger.Fatal("Could not init role update table", "error", err)
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = dbpool.Exec(ctx, queries["fixRoles"])
+	if err != nil {
+		logger.Fatal("Could not update roles", "error", err)
+	}
+
 	return &DatabaseAPI{
 		logger:         logger,
 		ShutdownSignal: ShutdownSignal,
@@ -64,11 +91,13 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 	// If not present in memory >> Populate all fields from DB
 	// If present in memory >> Copy all fields except role to DB and save
 	// Role is always synced from DB to Memory
+	d.logger.Debug("Checking for existing session...")
 	d.Sessions.Mutex.RLock()
 	session := d.Sessions.Sessions[cookie]
 	d.Sessions.Mutex.RUnlock()
 
 	if session == nil {
+		d.logger.Debug("Session is empty, fetching...")
 		//Fetch from DB
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -81,20 +110,22 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		err = d.dbpool.QueryRow(ctx, queries["fetchFromDB"], cookie).Scan(
-			s.CharacterID,
-			s.CharacterName,
-			s.CorporationID,
-			s.AllianceID,
-			s.AccessToken,
-			s.RefreshToken,
-			s.TokenExpiry,
-			s.TokenType,
-			s.Role,
-			s.NextESISync)
+			&s.CharacterID,
+			&s.CharacterName,
+			&s.CorporationID,
+			&s.AllianceID,
+			&s.AccessToken,
+			&s.RefreshToken,
+			&s.TokenExpiry,
+			&s.TokenType,
+			&s.Role,
+			&s.NextESISync)
 		if err != nil {
 			d.logger.Error("Could not fetch session", "cookie", cookie, "error", err)
 			return
 		}
+
+		d.logger.Debug("Fetched session!", "for", s.CharacterName, "cookie", cookie)
 
 		token := oauth2.Token{
 			Expiry:       s.TokenExpiry,
@@ -112,30 +143,36 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 			AllianceID: s.AllianceID,
 			RefreshEVE: s.NextESISync,
 			Role:       s.Role,
-			RefreshDB:  time.Now().Add(time.Minute * 10),
+			RefreshDB:  time.Now().Add(5 * time.Minute),
 		}
 
 		d.Sessions.Mutex.Lock()
-		defer session.Mutex.Unlock()
-		session := d.Sessions.Sessions[cookie]
+		defer d.Sessions.Mutex.Unlock()
+		existing_session := d.Sessions.Sessions[cookie]
 
-		if session != nil {
+		if existing_session != nil {
 			//another thread has already updated it
+			d.logger.Debug("Session has been updated b/w first and second check. Performing no update")
 			return
 		}
 
+		d.logger.Debug("Adding session to in-memory pool", "cookie", cookie)
 		d.Sessions.Sessions[cookie] = session
 		return
 
 	} else {
-		//Session present already. Update DB from memory
+		d.logger.Debug("Session already present in memory")
 		session.Mutex.Lock()
 		defer session.Mutex.Unlock()
+
 		if !force && session.RefreshDB.After(time.Now()) {
+			d.logger.Debug("Refresh not required")
 			return
 		}
-		session.RefreshDB = time.Now().Add(5 * time.Minute)
+		d.logger.Debug("Refreshing")
 
+		session.RefreshDB = time.Now().Add(5 * time.Minute)
+		d.logger.Debug("Running fixroles")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		_, err := d.dbpool.Exec(ctx, queries["fixRoles"])
@@ -143,14 +180,16 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 			d.logger.Error("Could not update roles", "error", err)
 			return
 		}
-
+		d.logger.Debug("Fetching just role from DB")
 		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		var DBRole string
 		err = d.dbpool.QueryRow(ctx, queries["fetchJustRoleFromDB"], cookie).Scan(
-			DBRole)
+			&DBRole)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
+				d.logger.Debug("No entry Exists, doing full save to DB")
+
 				//Full DB update required - no entry exists
 				//This is only reached occasionally, when a new entry is first made. As such, having a bit of a longer block is acceptable
 				s := &storedSession{
@@ -187,7 +226,7 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 					return
 				}
 
-				//Need to update roles again since roles would not get updated if entry does not exist
+				d.logger.Debug("Syncing roles with fixroles on new DB entry")
 				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				_, err := d.dbpool.Exec(ctx, queries["fixRoles"])
@@ -196,11 +235,13 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 					return
 				}
 				//AAaand sync it again to memory
+				d.logger.Debug("Fetching role to memory post sync on new enty")
+
 				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				var DBRole string
 				err = d.dbpool.QueryRow(ctx, queries["fetchJustRoleFromDB"], cookie).Scan(
-					DBRole)
+					&DBRole)
 
 				if err != nil {
 					d.logger.Error("Could not fetch roles", "cookie", cookie, "error", err)
@@ -215,6 +256,8 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 				return
 			}
 		}
+
+		d.logger.Debug("Entry Present. Syncing Role FROM database and all other values TO database")
 
 		//Sync just role FROM DB and sync rest TO DB
 		session.Role = DBRole

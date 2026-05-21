@@ -2,16 +2,16 @@ package database
 
 var queries = map[string]string{
 	"InitSessions": `CREATE TABLE IF NOT EXISTS sessions (
-		Cookie          TEXT        NOT NULL,
-		CharacterID     TEXT        NOT NULL,
-		CharacterName   TEXT        NOT NULL,
-		CorporationID   TEXT        NOT NULL,
-		AllianceID      TEXT        NOT NULL,
-		AccessToken     TEXT        NOT NULL,
-		RefreshToken	TEXT		NOT NULL,
-		TokenExpiry     TIMESTAMTZ  NOT NULL,
-		TokenType       TEXT        NOT NULL,
-		Role			TEXT		NOT NULL,
+		Cookie          VARCHAR        NOT NULL,
+		CharacterID     VARCHAR        NOT NULL,
+		CharacterName   VARCHAR        NOT NULL,
+		CorporationID   VARCHAR        NOT NULL,
+		AllianceID      VARCHAR        NOT NULL,
+		AccessToken     VARCHAR        NOT NULL,
+		RefreshToken	VARCHAR		NOT NULL,
+		TokenExpiry     TIMESTAMPTZ NOT NULL,
+		TokenType       VARCHAR        NOT NULL,
+		Role			VARCHAR		NOT NULL,
 		NextESISync     TIMESTAMPTZ NOT NULL,
 
 		PRIMARY KEY (Cookie)
@@ -19,22 +19,21 @@ var queries = map[string]string{
 		CREATE INDEX IF NOT EXISTS idx_sessions_characterid ON sessions (CharacterID);`,
 
 	"initRoleUpdates": `CREATE TABLE IF NOT EXISTS pendingRoleUpdates (
-		CharacterID     TEXT        NOT NULL,
-		NewRole         TEXT        NOT NULL,
+		CharacterID     VARCHAR        NOT NULL,
+		NewRole         VARCHAR        NOT NULL,
 
 		PRIMARY KEY (CharacterID)
 		);`,
 
 	"fixRoles": `WITH pending AS (
 			DELETE FROM pendingRoleUpdates
-			WHERE CharacterID = $1
-			AND EXISTS (SELECT 1 FROM sessions WHERE CharacterID = $1)
-			RETURNING NewRole
+			WHERE EXISTS (SELECT 1 FROM sessions WHERE sessions.CharacterID = pendingRoleUpdates.CharacterID)
+			RETURNING CharacterID, NewRole
 		)
 		UPDATE sessions
 		SET Role = pending.NewRole
 		FROM pending
-		WHERE sessions.CharacterID = $1;`,
+		WHERE sessions.CharacterID = pending.CharacterID;`,
 
 	"purgeByID": `DELETE FROM sessions
         WHERE CharacterID = $1`,
@@ -46,7 +45,7 @@ var queries = map[string]string{
 			FROM sessions
 			WHERE Cookie = $1`,
 
-	"fetchJustRoleFromDB": `SELECT Role
+	"fetchJustRoleFromDB": `SELECT Role::text
 		FROM sessions
 		WHERE Cookie = $1`,
 
@@ -54,18 +53,9 @@ var queries = map[string]string{
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT (Cookie) DO UPDATE
 		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, Role = $10, NextESISync = $11;
-
-		UPDATE sessions
-		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, Role = $10, NextESISync = $11
-		WHERE CharacterID = $2 AND Cookie != $1;
 	`,
 
-	"insertOrUpdateAllExceptRole": `INSERT INTO sessions (Cookie, CharacterID, CharacterName, CorporationID, AllianceID, AccessToken, RefreshToken, TokenExpiry, TokenType, NextESISync)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		ON CONFLICT (Cookie) DO UPDATE
-		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, NextESISync = $10;
-
-		UPDATE sessions
+	"insertOrUpdateAllExceptRole": `UPDATE sessions
 		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, NextESISync = $10;
 		WHERE CharacterID = $2 AND Cookie != $1;
 	`,

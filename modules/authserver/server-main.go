@@ -60,7 +60,10 @@ func (a *AuthServer) StartServer() {
 
 	a.logger.Info("Starting server", "port", a.config.Port)
 
-	srv.ListenAndServe()
+	err := srv.ListenAndServe()
+	if err != nil {
+		a.logger.Warn("Server exited!")
+	}
 }
 
 func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +76,8 @@ func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
 	returnedVal := a.EVEClient.VerifyUser(cookie.Value, false)
 
 	if !returnedVal.Allow {
+		a.logger.Debug("CHECK RETURNED DISALLOW", "User", returnedVal.User, "UID", returnedVal.Uname)
+
 		http.SetCookie(w, &http.Cookie{
 			Name:    "evefa_session_token",
 			Value:   "",
@@ -83,6 +88,8 @@ func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "http"+(If(a.config.Server.Is_Secure, "s", ""))+"://"+a.config.Server.Domain+"/login", 307)
 		return
 	}
+
+	a.logger.Debug("CHECK OK 200 ALLOW", "User", returnedVal.User, "UID", returnedVal.Uname)
 
 	w.Header().Add(a.config.Server.User_Header, returnedVal.Uname)
 	w.Header().Add(a.config.Server.UID_Header, returnedVal.User)
