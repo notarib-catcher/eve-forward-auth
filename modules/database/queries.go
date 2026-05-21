@@ -59,4 +59,20 @@ var queries = map[string]string{
 		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, NextESISync = $10;
 		WHERE CharacterID = $2 AND Cookie != $1;
 	`,
+
+	"syncSimilarEntries": `UPDATE sessions s
+		SET
+			CharacterName = src.CharacterName,
+			CorporationID = src.CorporationID,
+			AllianceID    = src.AllianceID,
+			AccessToken   = src.AccessToken,
+			RefreshToken  = src.RefreshToken,
+			TokenExpiry   = src.TokenExpiry,
+			TokenType     = src.TokenType,
+			Role          = src.Role,
+			NextESISync   = src.NextESISync
+		FROM sessions src
+		WHERE src.Cookie = $1
+		AND s.CharacterID = src.CharacterID
+		AND s.Cookie != src.Cookie;`,
 }

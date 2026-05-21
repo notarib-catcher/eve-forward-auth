@@ -232,6 +232,16 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 					return
 				}
 
+				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+
+				_, err = d.dbpool.Exec(ctx, queries["syncSimilarEntries"], cookie)
+
+				if err != nil {
+					d.logger.Error("Entry sync with similar entries - failed", "cookie", cookie, "error", err)
+					return
+				}
+
 				d.logger.Debug("Syncing roles with fixroles on new DB entry")
 				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
@@ -294,6 +304,16 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 			s.TokenExpiry,
 			s.TokenType,
 			s.NextESISync)
+
+		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err = d.dbpool.Exec(ctx, queries["syncSimilarEntries"], cookie)
+
+		if err != nil {
+			d.logger.Error("Entry sync with similar entries after update - failed", "cookie", cookie, "error", err)
+			return
+		}
 
 	}
 }
