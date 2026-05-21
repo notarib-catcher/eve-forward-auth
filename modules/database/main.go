@@ -22,6 +22,12 @@ type DatabaseAPI struct {
 	dbpool         *pgxpool.Pool
 }
 
+// TODO: Simultaneously update other entries with same character ID with new values
+// when existing data is updated.
+// So that all entries with that character ID are synced up interms of tokens, etc.
+// This would let people log in from different places at one time like phone + pc
+// this is TODO on all places where data is inserted or updated in DB.
+
 func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *sync.WaitGroup, Sessions *types.ActiveAuthenticatedSessions, Config *types.Config) *DatabaseAPI {
 
 	pgconfig, err := pgxpool.ParseConfig(Config.Database.Postgres_Connection_String)
