@@ -145,7 +145,7 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 		RefreshEVE: time.Now(),
 	}
 
-	err = es.UpdateEVEInfo(NewSession, true)
+	err = es.UpdateEVEInfo(NewSession, true, "")
 
 	if err != nil {
 		es.logger.Error("Error while updating info from ESI", "error", err)
@@ -175,7 +175,7 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "http"+(If(es.config.Server.Is_Secure, "s", ""))+"://"+es.config.Server.Domain+"/"+es.config.Server.Prefix+"/success?redirect="+redirect, 200)
 }
 
-func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSession, force bool) error {
+func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSession, force bool, optionalCookie string) error {
 
 	StoredSession.Mutex.Lock()
 	defer StoredSession.Mutex.Unlock()
@@ -233,6 +233,11 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 
 	es.logger.Debug("Stored character " + strconv.Itoa(int(claims.CharacterID)) + " to memory")
 
+	if optionalCookie != "" {
+		es.logger.Debug("ESI Fetch complete. Triggering database resync...")
+		es.databaseAPI.SyncMemory(optionalCookie, true)
+	}
+
 	return nil
 
 }
@@ -264,7 +269,7 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 
 	}
 
-	err := es.UpdateEVEInfo(session, false)
+	err := es.UpdateEVEInfo(session, false, cookie)
 
 	if err != nil {
 		es.logger.Error("Update Eve Info returned error - clearing stored session and denying", "cookie", cookie, "error", err)
