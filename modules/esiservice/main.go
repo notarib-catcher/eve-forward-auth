@@ -219,7 +219,7 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	CorporationID := strconv.Itoa(result.CorpID)
 	token, err := tokenSrc.Token()
 
-	es.logger.Debug("Fetched character"+strconv.Itoa(int(claims.CharacterID)), "name", claims.CharacterName, "corp", CorporationID, "alliance", AllianceID)
+	es.logger.Debug("Fetched character "+strconv.Itoa(int(claims.CharacterID)), "name", claims.CharacterName, "corp", CorporationID, "alliance", AllianceID)
 
 	StoredSession.AllianceID = AllianceID
 	StoredSession.CorpID = CorporationID
