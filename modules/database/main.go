@@ -8,6 +8,7 @@ import (
 	"time"
 
 	log "github.com/charmbracelet/log"
+	"github.com/go-co-op/gocron/v2"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/oauth2"
@@ -40,14 +41,42 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 		ShutdownSignal.Done()
 	}
 
+	s, err := gocron.NewScheduler()
+	if err != nil {
+		logger.Fatal("Could not initialise CRON scheduler", "error", err)
+	}
+
+	logger.Debug("Scheduling fixRoles")
+	s.NewJob(gocron.DurationJob(30*time.Second),
+		gocron.NewTask(
+			func() {
+				logger.Debug("Running fixRoles query")
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_, err := dbpool.Exec(ctx, queries["fixRoles"])
+				if err != nil {
+					logger.Error("Could not apply role updates", "error", err)
+					return
+				}
+			},
+		),
+		gocron.WithIntervalFromCompletion(),
+		gocron.WithContext(ShutdownSignal),
+	)
+	defer s.Start()
+
 	logger.Info("Database Connected.")
 	CleanupTracker.Go(func() {
 		<-ShutdownSignal.Done()
 		done := make(chan int, 1)
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		logger.Info("Closing DB pool...")
 		go func() {
+			logger.Info("Closing running jobs...")
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			defer cancel()
+			s.ShutdownWithContext(ctx)
+			logger.Info("Closing DB pool...")
 			dbpool.Close()
 			done <- 1
 		}()
@@ -76,13 +105,6 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 		logger.Fatal("Could not init role update table", "error", err)
 	}
 
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err = dbpool.Exec(ctx, queries["fixRoles"])
-	if err != nil {
-		logger.Fatal("Could not update roles", "error", err)
-	}
-
 	return &DatabaseAPI{
 		logger:         logger,
 		ShutdownSignal: ShutdownSignal,
@@ -104,18 +126,11 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 
 	if session == nil {
 		d.logger.Debug("Session is empty, fetching...")
-		//Fetch from DB
+
+		s := &storedSession{}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, err := d.dbpool.Exec(ctx, queries["fixRoles"])
-		if err != nil {
-			d.logger.Error("Could not update roles", "error", err)
-			return
-		}
-		s := &storedSession{}
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		err = d.dbpool.QueryRow(ctx, queries["fetchFromDB"], cookie).Scan(
+		err := d.dbpool.QueryRow(ctx, queries["fetchFromDB"], cookie).Scan(
 			&s.CharacterID,
 			&s.CharacterName,
 			&s.CorporationID,
@@ -178,19 +193,12 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 		d.logger.Debug("Refreshing")
 
 		session.RefreshDB = time.Now().Add(5 * time.Minute)
-		d.logger.Debug("Running fixroles")
+
+		d.logger.Debug("Fetching just role from DB")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		_, err := d.dbpool.Exec(ctx, queries["fixRoles"])
-		if err != nil {
-			d.logger.Error("Could not update roles", "error", err)
-			return
-		}
-		d.logger.Debug("Fetching just role from DB")
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 		var DBRole string
-		err = d.dbpool.QueryRow(ctx, queries["fetchJustRoleFromDB"], cookie).Scan(
+		err := d.dbpool.QueryRow(ctx, queries["fetchJustRoleFromDB"], cookie).Scan(
 			&DBRole)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {

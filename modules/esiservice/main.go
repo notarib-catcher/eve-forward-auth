@@ -181,9 +181,12 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	defer StoredSession.Mutex.Unlock()
 	if !force {
 		if time.Now().Before(StoredSession.RefreshEVE) {
+			es.logger.Debug("Skipping ESI fetch")
 			return nil
 		}
 	}
+
+	es.logger.Debug("Doing ESI fetch...")
 
 	StoredToken := *StoredSession.Token
 	tokenSrc := es.SSOAuthenticator.TokenSource(&StoredToken)
