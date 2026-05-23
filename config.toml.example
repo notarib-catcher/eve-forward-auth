@@ -46,6 +46,17 @@ Alliance_Allow = ["1111","2222"]
 # Behaviour is same as alliance, use if you want to allow granular corp-based access instead of alliance-wide.
 Corp_Allow = ["1234","5678"]
 
+
+# If this is set: All ESI authenticated users will be allowed to continue with HTTP 200, regardless of above allowlists.
+# The "Guest_Role" will be put into the Server.Role_Header field for people not on the Super admin, corp or alliance allowlists 
+# --- HOWEVER ---
+# If this is Unset/Empty String/"": Only whitelisted Super_Admin_IDs, Alliances and Corps above will be allowed
+# to pass through the proxy. Everyone else gets hit with a 403.
+# 
+# Regardless of if it is filled, it is never committed to database.
+# Database entries will only be Database.Default_Role
+Guest_Role = ""
+
 [Database]
 
 # Used to store session data

@@ -28,6 +28,7 @@ type Config struct {
 		Super_Admin_IDs []string
 		Alliance_Allow  []string
 		Corp_Allow      []string
+		Guest_Role      string
 	}
 
 	Database struct {

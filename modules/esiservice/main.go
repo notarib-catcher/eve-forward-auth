@@ -304,27 +304,53 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 	}
 
 	session.Mutex.RLock()
-	for _, uid := range es.config.Overrides.Super_Admin_IDs {
-		if uid == session.CharID {
-			final.Allow = true
-		}
-	}
-
-	for _, cid := range es.config.Overrides.Corp_Allow {
-		if cid == session.CorpID {
-			final.Allow = true
-		}
-	}
-
-	for _, aid := range es.config.Overrides.Alliance_Allow {
-		if aid == session.AllianceID {
-			final.Allow = true
-		}
-	}
-
+	allow, minRole := CheckPermissionsAndGetMinimumRole(es.config, session.CharID, session.CorpID, session.AllianceID)
 	session.Mutex.RUnlock()
 
+	final.Allow = allow
+	if final.Role == es.config.Database.Default_Role || final.Role == es.config.Overrides.Guest_Role {
+		// if Role is one of the defaults, then change it here depending on allow status
+		final.Role = minRole
+	}
+
 	return final
+}
+
+func CheckPermissionsAndGetMinimumRole(config *types.Config, charID string, corpID string, allianceID string) (bool, string) {
+	guestMode := config.Overrides.Guest_Role == ""
+
+	allow := false
+	for _, uid := range config.Overrides.Super_Admin_IDs {
+		if uid == charID {
+			allow = true
+		}
+	}
+
+	for _, cid := range config.Overrides.Corp_Allow {
+		if cid == corpID {
+			allow = true
+		}
+	}
+
+	for _, aid := range config.Overrides.Alliance_Allow {
+		if aid == allianceID {
+			allow = true
+		}
+	}
+
+	if !allow {
+		if guestMode {
+			//allow as guest
+			return true, config.Overrides.Guest_Role
+		} else {
+			//deny with no role
+			return false, ""
+		}
+	}
+
+	//allow as member
+	return allow, config.Database.Default_Role
+
 }
 
 // TERNARY SUPPORT ?
