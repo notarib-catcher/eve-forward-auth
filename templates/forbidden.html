@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in</title>
+    <!-- INCLUDE -->
+    <!-- REMOVE THIS LINE IN PROD : REPLACE WITH INTERNALLY HOSTED HTMX COPY DO NOT RELY ON CDN >>> --><script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.10/dist/htmx.min.js" integrity="sha384-H5SrcfygHmAuTDZphMHqBJLc3FhssKjG7w/CeCpFReSfwBWDTKpkzPP8c+cLsK+V" crossorigin="anonymous"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
+    <!-- END INCLUDE -->
+</head>
+  <body class=" bg-black">
+    <!--CONTENT-->
+    <style>
+      .lelement {
+        background-color: #000;
+        color: #fff;
+        transition: filter 0.3s ease;
+      }
+
+      .lelement:hover {
+        filter: invert(100%);
+      }
+    </style>
+    <div id="wrapper" class="d-flex justify-content-center align-items-center vh-100">
+        <img class="position-absolute z-n1 vh-100" src="https://imgs.search.brave.com/PHZCVCbaQaQQnc5UKndpvy0Hgow7KERjKi7VN5x62HE/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly93YWxs/cGFwZXJhY2Nlc3Mu/Y29tL2Z1bGwvMzU0/OTI0NS5qcGc">
+        <<div class="bg-light p-2 rounded shadow position-absolute z-0">
+    <div id="msg-nocookie" class="d-none">
+        <span class="text-danger"><b>You have not been logged in,</b></span><br>
+        as the character you selected is not permitted to access this site.<br><br>
+        Redirecting to login page (10s)...
+    </div>
+    <div id="msg-unauthorized" class="d-none">
+        You are logged in. However,<br>
+        <span class="text-danger"><b>The current character is not permitted to access this service.</b></span><br><br>
+        You may:<br>
+        <button onclick= "window.location.href='/logout?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out</button> of this session<br>
+        <button onclick= "window.location.href='/purge?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out all </button> sessions with this character.
+    </div>
+</div>
+
+<script>
+    const params = new URLSearchParams(window.location.search);
+    const redirect = params.get('redirect');
+    const loginUrl = '/login' + (redirect ? '?redirect=' + redirect : '');
+
+    if (params.get('nocookie') === 'true') {
+        document.getElementById('msg-nocookie').classList.remove('d-none');
+        setTimeout(() => window.location.href = loginUrl, 10000);
+    } else {
+        document.getElementById('msg-unauthorized').classList.remove('d-none');
+        document.getElementById('msg-unauthorized').querySelector('button').onclick = function() {
+            document.cookie = 'evefa_session_token=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+            window.location.href = loginUrl;
+        };
+    }
+</script>
+</div>
+    </div>
+
+    <!--END CONTENT-->
+    <!-- BOOTSTRAP INCLUDE -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js" integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI" crossorigin="anonymous"></script>
+    <!-- BOOTSTRAP INCLUDE -->
+</body>
+</html>

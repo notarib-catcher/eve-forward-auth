@@ -18,7 +18,7 @@ type ESIService struct {
 	ActiveLoggedInSessions *types.ActiveAuthenticatedSessions
 	HostedAt               string
 	config                 *types.Config
-	databaseAPI            *database.DatabaseAPI
+	DatabaseAPI            *database.DatabaseAPI
 }
 
 type AuthSession struct {

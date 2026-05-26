@@ -403,6 +403,7 @@ func (d *DatabaseAPI) Delete(cookie string) {
 	session := d.Sessions.Sessions[cookie]
 	d.Sessions.Mutex.RUnlock()
 	if session == nil {
+		d.logger.Debug("(Delete) Could not find sesssion", "cookie", cookie)
 		return
 	}
 
@@ -418,17 +419,19 @@ func (d *DatabaseAPI) Delete(cookie string) {
 	defer cancel()
 	_, err := d.dbpool.Exec(ctx, queries["deleteByCookie"], cookie)
 	if err != nil {
-		d.logger.Error("Could not purge", "error", err)
+		d.logger.Error("(Delete) Could not delete", "error", err)
 		return
 	}
 
 }
 
 func (d *DatabaseAPI) Purge(cookie string) {
+	d.logger.Debug("(Purge) Purging", "cookie", cookie)
 	d.Sessions.Mutex.RLock()
 	session := d.Sessions.Sessions[cookie]
 	d.Sessions.Mutex.RUnlock()
 	if session == nil {
+		d.logger.Debug("(Purge) Invalid session to purge", "cookie", cookie)
 		return
 	}
 
@@ -436,11 +439,14 @@ func (d *DatabaseAPI) Purge(cookie string) {
 	toDeleteChar := session.CharID
 	session.Mutex.RUnlock()
 
+	d.logger.Debug("(Purge) Purging char", "char", toDeleteChar, "cookie", cookie)
+
 	//We do the check again. The first time, we do an RLock so as to not block the other reads incase it is a DoS/Spam
 	d.Sessions.Mutex.Lock()
 	session = d.Sessions.Sessions[cookie]
 	if session == nil {
 		//Doesnt exist anymore - another thread probably deleted it bc of a duplicate request a few ms apart
+		d.logger.Debug("(Purge) Debounced while purging", "char", toDeleteChar, "cookie", cookie)
 		d.Sessions.Mutex.Unlock()
 		return
 	}
@@ -461,6 +467,7 @@ func (d *DatabaseAPI) Purge(cookie string) {
 	//Finally, delete.
 	d.Sessions.Mutex.Lock()
 	for _, v := range toDelete {
+		d.logger.Debug("(Purge) Deleted loaded session", "cookie", v)
 		delete(d.Sessions.Sessions, v)
 	}
 	d.Sessions.Mutex.Unlock()
@@ -468,9 +475,9 @@ func (d *DatabaseAPI) Purge(cookie string) {
 	//NOW WE PURGE FROM DB
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := d.dbpool.Exec(ctx, queries["purgeFromDB"], toDeleteChar)
+	_, err := d.dbpool.Exec(ctx, queries["purgeByID"], toDeleteChar)
 	if err != nil {
-		d.logger.Error("Could not purge", "error", err)
+		d.logger.Error("(Purge) Could not purge", "error", err)
 		return
 	}
 

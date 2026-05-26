@@ -7,6 +7,7 @@ import (
 	"errors"
 	"eve-forward-auth/modules/database"
 	"eve-forward-auth/types"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -39,6 +40,7 @@ func NewESIService(logger *log.Logger, HostedAt string, Redirect_URL string, Ses
 	auth := goesi.NewSSOAuthenticatorV2(*nonCachingClient, Config.App_ID, Config.App_Secret, Redirect_URL, scopes)
 
 	logger.Info("Initialized ESI handler")
+	fmt.Println(Sessions)
 	return &ESIService{
 		logger:           logger,
 		SSOAuthenticator: auth,
@@ -49,7 +51,7 @@ func NewESIService(logger *log.Logger, HostedAt string, Redirect_URL string, Ses
 		HostedAt:               HostedAt,
 		ActiveLoggedInSessions: Sessions,
 		config:                 Config,
-		databaseAPI:            DBAPI,
+		DatabaseAPI:            DBAPI,
 	}
 }
 
@@ -149,17 +151,19 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		es.logger.Error("Error while updating info from ESI", "error", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Error fetching info from ESI"))
 
 		if err.Error() == "Token Validation Error" {
 			es.logger.Debug("Token Invalid")
 		}
 
 		if err.Error() == "Unauthorised" {
-			http.Redirect(w, r, "/unauthorised?redirect="+redirect, http.StatusForbidden)
+			w.Header().Add("Content-Type", "")
+			http.Redirect(w, r, "/forbidden?nocookie=true&redirect="+redirect, http.StatusTemporaryRedirect)
 			return
 		}
+
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Error fetching info from ESI"))
 		return
 	}
 
@@ -175,7 +179,7 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 		Path:    "/",
 	})
 
-	es.databaseAPI.Commit(SessionCookie)
+	es.DatabaseAPI.Commit(SessionCookie)
 
 	http.Redirect(w, r, "http"+(If(es.config.Server.Is_Secure, "s", ""))+"://"+es.config.Server.Domain+"/"+es.config.Server.Prefix+"/success?redirect="+redirect, 200)
 }
@@ -256,10 +260,10 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	// However if it is called during login flow, then the commit will happen in the login flow handler and not here
 	if optionalCookie != "" {
 		es.logger.Debug("ESI Fetch complete. Triggering database resync...")
-		es.databaseAPI.Commit(optionalCookie)
+		es.DatabaseAPI.Commit(optionalCookie)
 	}
 
-	for _, sessionToken := range es.databaseAPI.GetSessionsForChar(strconv.Itoa(int(claims.CharacterID))) {
+	for _, sessionToken := range es.DatabaseAPI.GetSessionsForChar(strconv.Itoa(int(claims.CharacterID))) {
 		if sessionToken == optionalCookie {
 			continue
 		}
@@ -305,11 +309,13 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 			}
 		} else {
 			es.logger.Debug("Attempting DB sync for nil session", "cookie", cookie)
-			es.databaseAPI.Fetch(cookie, false)
+			es.DatabaseAPI.Fetch(cookie, false)
 			es.logger.Debug("Recursive call post DB fetch (nil session)")
 			return es.VerifyUser(cookie, true)
 		}
 
+	} else {
+		es.logger.Debug("Found logged in session", "cookie", cookie)
 	}
 
 	err := es.UpdateEVEInfo(session, false, cookie)
@@ -317,7 +323,7 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 	if err != nil {
 		es.logger.Error("Update Eve Info returned error - denying", "cookie", cookie, "error", err)
 
-		es.databaseAPI.Delete(cookie)
+		es.DatabaseAPI.Delete(cookie)
 
 		return &UserAuthDetails{
 			Allow: false,
@@ -333,7 +339,7 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 
 	if time.Now().After(DBUpdateTime) {
 		es.logger.Debug("Doing DB fetch as cache invalid")
-		es.databaseAPI.Fetch(cookie, false)
+		es.DatabaseAPI.Fetch(cookie, false)
 		es.logger.Debug("Recursive call post DB fetch...")
 		return es.VerifyUser(cookie, true)
 	}
