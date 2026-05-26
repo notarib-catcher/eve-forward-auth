@@ -78,14 +78,33 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err = dbpool.Exec(ctx, queries["InitSessions"])
+	_, err = dbpool.Exec(ctx, `CREATE TABLE IF NOT EXISTS sessions (
+		Cookie          VARCHAR        NOT NULL,
+		CharacterID     VARCHAR        NOT NULL,
+		CharacterName   VARCHAR        NOT NULL,
+		CorporationID   VARCHAR        NOT NULL,
+		AllianceID      VARCHAR        NOT NULL,
+		AccessToken     VARCHAR        NOT NULL,
+		RefreshToken	VARCHAR		NOT NULL,
+		TokenExpiry     TIMESTAMPTZ NOT NULL,
+		TokenType       VARCHAR        NOT NULL,
+		NextESISync     TIMESTAMPTZ NOT NULL,
+
+		PRIMARY KEY (Cookie)
+		);
+		CREATE INDEX IF NOT EXISTS idx_sessions_characterid ON sessions (CharacterID);`)
 	if err != nil {
 		logger.Fatal("Could not init session table", "error", err)
 	}
 
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err = dbpool.Exec(ctx, queries["initRoleUpdates"])
+	_, err = dbpool.Exec(ctx, `CREATE TABLE IF NOT EXISTS roleOverrides (
+		CharacterID     VARCHAR        NOT NULL,
+		Role         	VARCHAR        NOT NULL,
+
+		PRIMARY KEY (CharacterID)
+		);`)
 	if err != nil {
 		logger.Fatal("Could not init role update table", "error", err)
 	}
@@ -105,6 +124,7 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 func (d *DatabaseAPI) Commit(cookie string) {
 	d.Sessions.Mutex.RLock()
 	session := d.Sessions.Sessions[cookie]
+	d.logger.Warn((len(d.Sessions.Sessions)))
 	d.Sessions.Mutex.RUnlock()
 
 	d.logger.Debug("(Commit) Processing cookie", "cookie", cookie)
@@ -417,7 +437,7 @@ func (d *DatabaseAPI) Delete(cookie string) {
 	delete(d.Sessions.Sessions, cookie)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := d.dbpool.Exec(ctx, queries["deleteByCookie"], cookie)
+	_, err := d.dbpool.Exec(ctx, `DELETE FROM sessions WHERE Cookie = $1`, cookie)
 	if err != nil {
 		d.logger.Error("(Delete) Could not delete", "error", err)
 		return
@@ -475,7 +495,7 @@ func (d *DatabaseAPI) Purge(cookie string) {
 	//NOW WE PURGE FROM DB
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, err := d.dbpool.Exec(ctx, queries["purgeByID"], toDeleteChar)
+	_, err := d.dbpool.Exec(ctx, `DELETE FROM sessions WHERE CharacterID = $1`, toDeleteChar)
 	if err != nil {
 		d.logger.Error("(Purge) Could not purge", "error", err)
 		return
