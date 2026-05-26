@@ -59,7 +59,7 @@ func (es *ESIService) HandleIncomingAuth(w http.ResponseWriter, r *http.Request)
 
 	allowed := false
 
-	if redirect == es.HostedAt+"success" {
+	if redirect == es.HostedAt+"success" || redirect == "" {
 		allowed = true
 	}
 
