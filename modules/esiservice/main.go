@@ -7,7 +7,6 @@ import (
 	"errors"
 	"eve-forward-auth/modules/database"
 	"eve-forward-auth/types"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -40,7 +39,6 @@ func NewESIService(logger *log.Logger, HostedAt string, Redirect_URL string, Ses
 	auth := goesi.NewSSOAuthenticatorV2(*nonCachingClient, Config.App_ID, Config.App_Secret, Redirect_URL, scopes)
 
 	logger.Info("Initialized ESI handler")
-	fmt.Println(Sessions)
 	return &ESIService{
 		logger:           logger,
 		SSOAuthenticator: auth,
