@@ -216,7 +216,7 @@ func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
 					RefreshToken:  session.Token.RefreshToken,
 					NextESISync:   session.RefreshEVE,
 					CharacterName: session.Name,
-					Role:          d.config.Database.Default_Role,
+					Role:          session.Role,
 				}
 
 				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)

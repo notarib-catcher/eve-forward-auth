@@ -155,6 +155,11 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 		if err.Error() == "Token Validation Error" {
 			es.logger.Debug("Token Invalid")
 		}
+
+		if err.Error() == "Unauthorised" {
+			http.Redirect(w, r, "/unauthorised?redirect="+redirect, http.StatusForbidden)
+			return
+		}
 		return
 	}
 
@@ -222,7 +227,13 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	CorporationID := strconv.Itoa(result.CorpID)
 	token, err := tokenSrc.Token()
 
-	es.logger.Debug("Fetched character "+strconv.Itoa(int(claims.CharacterID)), "name", claims.CharacterName, "corp", CorporationID, "alliance", AllianceID)
+	allow, role := CheckPermissionsAndGetMinimumRole(es.config, strconv.Itoa(int(claims.CharacterID)), CorporationID, AllianceID)
+
+	if !allow {
+		return errors.New("Unauthorised")
+	}
+
+	es.logger.Debug("Fetched character "+strconv.Itoa(int(claims.CharacterID)), "name", claims.CharacterName, "corp", CorporationID, "alliance", AllianceID, "role", role)
 
 	StoredSession.AllianceID = AllianceID
 	StoredSession.CorpID = CorporationID
@@ -230,6 +241,7 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	StoredSession.Name = claims.CharacterName
 	StoredSession.RefreshEVE = time.Now().Add(12 * time.Hour)
 	StoredSession.Token = token
+	StoredSession.Role = role
 
 	es.logger.Debug("Stored character " + strconv.Itoa(int(claims.CharacterID)) + " to memory")
 
