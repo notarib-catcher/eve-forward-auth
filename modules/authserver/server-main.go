@@ -4,6 +4,7 @@ import (
 	"context"
 	"eve-forward-auth/modules/esiservice"
 	"eve-forward-auth/types"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -76,6 +77,8 @@ func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
 
 	ogUrl := getOriginalURL(r)
 	a.logger.Debug("Got original URL", "og", ogUrl)
+
+	ogUrl = extractBaseURL(ogUrl)
 
 	if err != nil {
 		http.Redirect(w, r, "http"+(If(a.config.Server.Is_Secure, "s", ""))+"://"+a.config.Server.Domain+"/login?redirect="+ogUrl, 302)
@@ -214,4 +217,14 @@ func isValidUrl(toTest string) bool {
 		return false
 	}
 	return true
+}
+
+func extractBaseURL(rawURL string) string {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+
+	// Construct the base URL with scheme, host, and a trailing slash
+	return fmt.Sprintf("%s://%s/", parsedURL.Scheme, parsedURL.Host)
 }
