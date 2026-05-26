@@ -52,9 +52,6 @@ Corp_Allow = ["1234","5678"]
 # --- HOWEVER ---
 # If this is Unset/Empty String/"": Only whitelisted Super_Admin_IDs, Alliances and Corps above will be allowed
 # to pass through the proxy. Everyone else gets hit with a 403.
-# 
-# Regardless of if it is filled, it is never committed to database.
-# Database entries will only be Database.Default_Role
 Guest_Role = ""
 
 [Database]
