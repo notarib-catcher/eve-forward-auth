@@ -77,12 +77,6 @@ func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
 	ogUrl := getOriginalURL(r)
 	a.logger.Debug("Got original URL", "og", ogUrl)
 
-	if !isValidUrl(ogUrl) {
-		a.logger.Debug("Invalid original URL, setting empty", "og", ogUrl)
-		//set to empty, this way
-		ogUrl = ""
-	}
-
 	if err != nil {
 		http.Redirect(w, r, "http"+(If(a.config.Server.Is_Secure, "s", ""))+"://"+a.config.Server.Domain+"/login?redirect="+ogUrl, 302)
 		return
