@@ -57,14 +57,9 @@ func (es *ESIService) HandleIncomingAuth(w http.ResponseWriter, r *http.Request)
 
 	redirect := r.URL.Query().Get("redirect")
 
-	if !isValidUrl(redirect) {
-		es.logger.Warn("Redirect URL is not valid, setting as /success page on auth", "was originally", redirect)
-		redirect = es.HostedAt + "/success"
-	}
-
 	allowed := false
 
-	if redirect == es.HostedAt+"/success" {
+	if redirect == es.HostedAt+"success" {
 		allowed = true
 	}
 
