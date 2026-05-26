@@ -1,0 +1,22 @@
+# Sample install, if your auth is running on port 8081 and the service you are protecting is on 8080
+
+auth.your.website {
+    reverse_proxy 127.0.0.1:8081
+}
+
+protected-subdomain.your.website {
+
+    # We register the auth endpoint here and the reverse proxy will forward requests to it before forwarding
+
+    forward_auth 127.0.0.1:8081 {
+        uri /check
+
+        # These headers are added and forwarded to your service. They contain some info about the authenticated user.
+        # See config.toml to configure them
+        copy_headers X-Authenticated-User X-Authenticated-UID X-Authenticated-Role
+    }
+    
+    # The actual service providing the endpoint. This won't be accessible until the person authenticates. 
+    reverse_proxy 127.0.0.1:8080
+}
+
