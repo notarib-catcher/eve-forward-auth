@@ -136,7 +136,6 @@ func (s *AuthServer) logout(w http.ResponseWriter, r *http.Request) {
 
 	if err == nil {
 		s.EVEClient.DatabaseAPI.Fetch(cookie.Value, false)
-		s.EVEClient.DatabaseAPI.Delete(cookie.Value)
 		http.SetCookie(w, &http.Cookie{
 			Name:    "evefa_session_token",
 			Domain:  s.config.Server.Base_Domain,
@@ -161,7 +160,6 @@ func (s *AuthServer) purge(w http.ResponseWriter, r *http.Request) {
 
 	if err == nil {
 		s.EVEClient.DatabaseAPI.Fetch(cookie.Value, false)
-		s.EVEClient.DatabaseAPI.Delete(cookie.Value)
 		http.SetCookie(w, &http.Cookie{
 			Name:    "evefa_session_token",
 			Domain:  s.config.Server.Base_Domain,
