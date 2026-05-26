@@ -6,6 +6,7 @@ This project provides forward authentication for eve online. It has minimal real
 To install:
 - Clone the repo
 - Install go dependencies
-- Populate config.toml (a .example version is given here)
+- Populate `config.toml` (a `.example` version is given here)
 - Configure your proxy to use this server for auth (an example caddyfile is provided)
+- Start the server with `go run main.go version.go`
 - Enjoy!
