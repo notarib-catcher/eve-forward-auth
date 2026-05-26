@@ -2,8 +2,7 @@ package database
 
 import "eve-forward-auth/types"
 
-func CheckPermissionsAndGetMinimumRole(config *types.Config, charID string, corpID string, allianceID string) (bool, string) {
-	guestMode := config.Overrides.Guest_Role == ""
+func CheckPermissions(config *types.Config, charID string, corpID string, allianceID string) bool {
 
 	allow := false
 	for _, uid := range config.Overrides.Super_Admin_IDs {
@@ -24,17 +23,12 @@ func CheckPermissionsAndGetMinimumRole(config *types.Config, charID string, corp
 		}
 	}
 
-	if !allow {
-		if guestMode {
-			//allow as guest
-			return true, config.Overrides.Guest_Role
-		} else {
-			//deny with no role
-			return false, ""
-		}
+	return allow
+}
+
+func If[T any](cond bool, vtrue, vfalse T) T {
+	if cond {
+		return vtrue
 	}
-
-	//allow as member
-	return allow, config.Database.Default_Role
-
+	return vfalse
 }

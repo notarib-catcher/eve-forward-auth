@@ -230,13 +230,14 @@ func (d *DatabaseAPI) Fetch(cookie string, force bool) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			//Session exists and no role override is set
 			d.logger.Debug("Assigning Default role based on perm check")
-			_, permrole := CheckPermissionsAndGetMinimumRole(d.config, charID, corpID, allianceID)
+			allow := CheckPermissions(d.config, charID, corpID, allianceID)
+			permRole := If(allow, d.config.Database.Default_Role, d.config.Overrides.Guest_Role)
 
 			session.Mutex.Lock()
-			session.Role = permrole
+			session.Role = permRole
 			session.RefreshDB = time.Now().Add(5 * time.Minute)
 			session.Mutex.Unlock()
-			d.UpdateSiblingSessionRoles(charID, permrole, cookie)
+			d.UpdateSiblingSessionRoles(charID, permRole, cookie)
 
 		} else {
 			//There is a role override
@@ -275,7 +276,17 @@ func (d *DatabaseAPI) Fetch(cookie string, force bool) {
 	}
 
 	if s.Role == "[ROLE_UNSET]" {
-		_, s.Role = CheckPermissionsAndGetMinimumRole(d.config, s.CharacterID, s.CorporationID, s.AllianceID)
+		allow := CheckPermissions(d.config, s.CharacterID, s.CorporationID, s.AllianceID)
+		if !allow {
+			if d.config.Overrides.Guest_Role != "" {
+				s.Role = d.config.Overrides.Guest_Role
+			} else {
+				d.logger.Warn("Refusing to fetch char as no valid role is available. Either they must join org or guest role must be set", "", s.CharacterID)
+			}
+		} else {
+			s.Role = d.config.Database.Default_Role
+		}
+
 	}
 	newSession := &types.ActiveAuthenticatedSession{
 		CharID:     s.CharacterID,
@@ -338,8 +349,6 @@ func (d *DatabaseAPI) Fetch(cookie string, force bool) {
 	d.charIDMapMutex.Unlock()
 
 	d.UpdateSiblingSessionRoles(s.CharacterID, s.Role, cookie)
-
-	return
 
 }
 

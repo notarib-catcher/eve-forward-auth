@@ -227,10 +227,15 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	CorporationID := strconv.Itoa(result.CorpID)
 	token, err := tokenSrc.Token()
 
-	allow, role := database.CheckPermissionsAndGetMinimumRole(es.config, strconv.Itoa(int(claims.CharacterID)), CorporationID, AllianceID)
+	allow := database.CheckPermissions(es.config, strconv.Itoa(int(claims.CharacterID)), CorporationID, AllianceID)
 
+	role := es.config.Database.Default_Role
 	if !allow {
-		return errors.New("Unauthorised")
+		//if allow is false and no guest role applicable, deny
+		if es.config.Overrides.Guest_Role == "" {
+			return errors.New("Unauthorised")
+		}
+		role = es.config.Overrides.Guest_Role
 	}
 
 	es.logger.Debug("Fetched character "+strconv.Itoa(int(claims.CharacterID)), "name", claims.CharacterName, "corp", CorporationID, "alliance", AllianceID, "role", role)
@@ -247,6 +252,8 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 
 	es.logger.Debug("Stored character " + strconv.Itoa(int(claims.CharacterID)) + " to memory")
 
+	// if VerifyUser calls it, optionalCookie is populated and we need to commit here
+	// However if it is called during login flow, then the commit will happen in the login flow handler and not here
 	if optionalCookie != "" {
 		es.logger.Debug("ESI Fetch complete. Triggering database resync...")
 		es.databaseAPI.Commit(optionalCookie)
@@ -339,8 +346,10 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 	}
 
 	session.Mutex.RLock()
-	allow, minRole := database.CheckPermissionsAndGetMinimumRole(es.config, session.CharID, session.CorpID, session.AllianceID)
+	allow := database.CheckPermissions(es.config, session.CharID, session.CorpID, session.AllianceID)
 	session.Mutex.RUnlock()
+
+	es.logger.Debug("CheckPermissions returned", "allow", allow)
 
 	final.Allow = allow
 
@@ -348,8 +357,12 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 	// this prevents them from being assigned a higher role than the base Guest role.
 	// if guest access is not enabled, then "allow" is false anyway, and their role is disregarded.
 
-	if minRole == es.config.Overrides.Guest_Role {
-		final.Role = minRole
+	if !allow {
+		if es.config.Overrides.Guest_Role != "" {
+			es.logger.Debug("Allowing as guest")
+			final.Allow = true
+			final.Role = es.config.Overrides.Guest_Role
+		}
 	}
 
 	es.logger.Debug("Returning", "allow", final.Allow, "role", final.Role)
