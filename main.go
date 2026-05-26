@@ -37,9 +37,11 @@ func main() {
 		log.Fatal("Could not parse config.toml", err)
 	}
 
+	hostedAt := If(config.Server.Is_Secure, "https://", "http://") + config.Server.Domain + "/" + (If(config.Server.Prefix != "", config.Server.Prefix+"/", ""))
+
 	log.Info("Loaded config",
 		"name", config.Name,
-		"hosted at", If(config.Server.Is_Secure, "https://", "http://")+config.Server.Domain+"/"+(If(config.Server.Prefix != "", config.Server.Prefix+"/", "")))
+		"hosted at", hostedAt)
 
 	log.Debug("Setting up thread termination")
 
@@ -77,7 +79,7 @@ func main() {
 
 	DB := database.NewDB(loggerDB, ctxStop, &waitForCleanup, &sessions, &config)
 
-	ESI := esiservice.NewESIService(loggerESI, "http://localhost", "http://localhost/sso/callback", &sessions, &config, DB)
+	ESI := esiservice.NewESIService(loggerESI, hostedAt, hostedAt+"sso/callback", &sessions, &config, DB)
 
 	Server := authserver.NewAuthServer(loggerAuth, ctxStop, &waitForCleanup, ESI, config)
 	log.Info("Initialisation complete!")
