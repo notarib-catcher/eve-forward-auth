@@ -179,7 +179,7 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 
 	es.DatabaseAPI.Commit(SessionCookie)
 
-	http.Redirect(w, r, "http"+(If(es.config.Server.Is_Secure, "s", ""))+"://"+es.config.Server.Domain+"/"+es.config.Server.Prefix+"/success?redirect="+redirect, 200)
+	http.Redirect(w, r, "http"+(If(es.config.Server.Is_Secure, "s", ""))+"://"+es.config.Server.Domain+"/"+es.config.Server.Prefix+"/success?redirect="+redirect, http.StatusTemporaryRedirect)
 }
 
 func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSession, force bool, optionalCookie string) error {
