@@ -27,9 +27,8 @@ UID_Header = "X-Authenticated-UID"
 Role_Header = "X-Authenticated-Role"
 
 # After auth, only URLs with these values are valid redirects
-# Do not include trailing '/'
-# The '/success' page on the auth server itself is also a valid redirect
-Redirect_Whitelist = ["https://service-behind-auth.example.com/homepage.html"]
+# Only http(s)://host.domain/ is allowed. Paths such as /index.html, etc. will be stripped. Do not include them
+Redirect_Whitelist = ["https://service-behind-auth.example.com/"]
 
 [Overrides]
 
