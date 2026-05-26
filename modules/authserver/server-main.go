@@ -76,7 +76,7 @@ func (a *AuthServer) handleChecks(w http.ResponseWriter, r *http.Request) {
 	returnedVal := a.EVEClient.VerifyUser(cookie.Value, false)
 
 	if !returnedVal.Allow {
-		a.logger.Debug("CHECK RETURNED DISALLOW", "User", returnedVal.User, "UID", returnedVal.Uname)
+		a.logger.Debug("CHECK RETURNED DISALLOW -- WIPING AND REDIRECTING", "User", returnedVal.User, "UID", returnedVal.Uname)
 
 		http.SetCookie(w, &http.Cookie{
 			Name:    "evefa_session_token",

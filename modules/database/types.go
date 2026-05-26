@@ -1,6 +1,9 @@
 package database
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type storedSession struct {
 	CharacterID   string
@@ -13,4 +16,9 @@ type storedSession struct {
 	TokenType     string
 	Role          string
 	NextESISync   time.Time
+}
+
+type storedCharIDSessionRelation struct {
+	Mutex    *sync.RWMutex
+	sessions []string
 }

@@ -15,12 +15,14 @@ import (
 )
 
 type DatabaseAPI struct {
-	logger         *log.Logger
-	ShutdownSignal context.Context
-	CleanupTracker *sync.WaitGroup
-	Sessions       *types.ActiveAuthenticatedSessions
-	config         types.Config
-	dbpool         *pgxpool.Pool
+	logger           *log.Logger
+	ShutdownSignal   context.Context
+	CleanupTracker   *sync.WaitGroup
+	Sessions         *types.ActiveAuthenticatedSessions
+	config           *types.Config
+	dbpool           *pgxpool.Pool
+	charIDSessionMap map[string]*storedCharIDSessionRelation
+	charIDMapMutex   *sync.RWMutex
 }
 
 // TODO: Simultaneously update other entries with same character ID with new values
@@ -46,23 +48,6 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 		logger.Fatal("Could not initialise CRON scheduler", "error", err)
 	}
 
-	logger.Debug("Scheduling fixRoles")
-	s.NewJob(gocron.DurationJob(30*time.Second),
-		gocron.NewTask(
-			func() {
-				logger.Debug("Running fixRoles query")
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_, err := dbpool.Exec(ctx, queries["fixRoles"])
-				if err != nil {
-					logger.Error("Could not apply role updates", "error", err)
-					return
-				}
-			},
-		),
-		gocron.WithIntervalFromCompletion(),
-		gocron.WithContext(ShutdownSignal),
-	)
 	defer s.Start()
 
 	logger.Info("Database Connected.")
@@ -106,224 +91,301 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 	}
 
 	return &DatabaseAPI{
-		logger:         logger,
-		ShutdownSignal: ShutdownSignal,
-		CleanupTracker: CleanupTracker,
-		Sessions:       Sessions,
-		config:         *Config,
-		dbpool:         dbpool,
+		logger:           logger,
+		ShutdownSignal:   ShutdownSignal,
+		CleanupTracker:   CleanupTracker,
+		Sessions:         Sessions,
+		config:           Config,
+		dbpool:           dbpool,
+		charIDSessionMap: make(map[string]*storedCharIDSessionRelation),
+		charIDMapMutex:   &sync.RWMutex{},
 	}
 }
 
-func (d *DatabaseAPI) SyncMemory(cookie string, force bool) {
-	// If not present in memory >> Populate all fields from DB
-	// If present in memory >> Copy all fields except role to DB and save
-	// Role is always synced from DB to Memory
-	d.logger.Debug("Checking for existing session...")
+func (d *DatabaseAPI) Commit(cookie string) {
+	d.Sessions.Mutex.RLock()
+	session := d.Sessions.Sessions[cookie]
+	d.Sessions.Mutex.RUnlock()
+
+	d.logger.Debug("(Commit) Processing cookie", "cookie", cookie)
+
+	if session == nil {
+		d.logger.Error("(Commit) Session is nil", "cookie", cookie)
+		return
+	}
+
+	session.Mutex.RLock()
+	toStore := &storedSession{
+		CharacterID:   session.CharID,
+		CharacterName: session.Name,
+		CorporationID: session.CorpID,
+		AllianceID:    session.AllianceID,
+		TokenExpiry:   session.Token.Expiry,
+		TokenType:     session.Token.TokenType,
+		AccessToken:   session.Token.AccessToken,
+		RefreshToken:  session.Token.RefreshToken,
+		NextESISync:   session.RefreshEVE,
+	}
+	session.Mutex.RUnlock()
+
+	d.logger.Debug("(Commit) Got stored char", "name", toStore.CharacterName, "cookie", cookie)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	tx, err := d.dbpool.Begin(ctx)
+	if err != nil {
+		d.logger.Error("(Commit) Could not begin transaction", "cookie", cookie, "error", err)
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	d.logger.Debug("(Commit) Inserting DB", "cookie", cookie)
+	_, err = tx.Exec(ctx, `
+		INSERT INTO sessions (Cookie, CharacterID, CharacterName, CorporationID, AllianceID, AccessToken, RefreshToken, TokenExpiry, TokenType, NextESISync)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT (Cookie) DO UPDATE
+		SET CharacterName = $3, CorporationID = $4, AllianceID = $5, AccessToken = $6, RefreshToken = $7, TokenExpiry = $8, TokenType = $9, NextESISync = $10
+	`, cookie, toStore.CharacterID, toStore.CharacterName, toStore.CorporationID, toStore.AllianceID, toStore.AccessToken, toStore.RefreshToken, toStore.TokenExpiry, toStore.TokenType, toStore.NextESISync)
+	if err != nil {
+		d.logger.Error("(Commit) Could not upsert session", "cookie", cookie, "error", err)
+		return
+	}
+
+	d.logger.Debug("(Commit) Sync DB siblings", "name", toStore.CharacterName, "id", toStore.CharacterID)
+	_, err = tx.Exec(ctx, `
+		UPDATE sessions
+		SET CharacterName = $1, CorporationID = $2, AllianceID = $3, AccessToken = $4, RefreshToken = $5, TokenExpiry = $6, TokenType = $7, NextESISync = $8
+		WHERE CharacterID = $9 AND Cookie != $10
+	`, toStore.CharacterName, toStore.CorporationID, toStore.AllianceID, toStore.AccessToken, toStore.RefreshToken, toStore.TokenExpiry, toStore.TokenType, toStore.NextESISync, toStore.CharacterID, cookie)
+	if err != nil {
+		d.logger.Error("(Commit) Could not sync siblings", "cookie", cookie, "error", err)
+		return
+	}
+
+	d.logger.Debug("(Commit) Committing", "name", toStore.CharacterName, "cookie", cookie)
+	if err = tx.Commit(ctx); err != nil {
+		d.logger.Error("(Commit) Could not commit transaction", "cookie", cookie, "error", err)
+		return
+	}
+
+	newSessionTracker := &storedCharIDSessionRelation{
+		Mutex:    &sync.RWMutex{},
+		sessions: []string{cookie},
+	}
+
+	d.charIDMapMutex.RLock()
+	sessionTracker := d.charIDSessionMap[toStore.CharacterID]
+	d.charIDMapMutex.RUnlock()
+
+	if sessionTracker == nil {
+		d.charIDMapMutex.Lock()
+
+		//debounce
+		if d.charIDSessionMap[toStore.CharacterID] == nil {
+			d.charIDSessionMap[toStore.CharacterID] = newSessionTracker
+		}
+
+		//commit
+		d.charIDMapMutex.Unlock()
+		return
+	}
+
+	//update existing
+	sessionTracker.Mutex.Lock()
+	sessionTracker.sessions = append(sessionTracker.sessions, cookie)
+	sessionTracker.Mutex.Unlock()
+
+}
+
+func (d *DatabaseAPI) Fetch(cookie string, force bool) {
+
+	needFullFetch := false
+
 	d.Sessions.Mutex.RLock()
 	session := d.Sessions.Sessions[cookie]
 	d.Sessions.Mutex.RUnlock()
 
 	if session == nil {
-		d.logger.Debug("Session is empty, fetching...")
+		needFullFetch = true
+	}
 
-		s := &storedSession{}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		err := d.dbpool.QueryRow(ctx, queries["fetchFromDB"], cookie).Scan(
-			&s.CharacterID,
-			&s.CharacterName,
-			&s.CorporationID,
-			&s.AllianceID,
-			&s.AccessToken,
-			&s.RefreshToken,
-			&s.TokenExpiry,
-			&s.TokenType,
-			&s.Role,
-			&s.NextESISync)
-		if err != nil {
-			d.logger.Error("Could not fetch session", "cookie", cookie, "error", err)
+	if !needFullFetch {
+		session.Mutex.RLock()
+		charID := session.CharID
+		corpID := session.CorpID
+		allianceID := session.AllianceID
+		refreshTime := session.RefreshDB
+		session.Mutex.RUnlock()
+
+		//Not forced, check if refresh needed
+		if !force && !time.Now().After(refreshTime) {
+			d.logger.Debug("(Fetch) Skipping partial DB fetch")
 			return
 		}
+		var dbrole string
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := d.dbpool.QueryRow(ctx, "SELECT Role from roleOverrides where CharacterID = $1", charID).Scan(&dbrole)
+		if errors.Is(err, pgx.ErrNoRows) {
+			//Session exists and no role override is set
+			d.logger.Debug("Assigning Default role based on perm check")
+			_, permrole := CheckPermissionsAndGetMinimumRole(d.config, charID, corpID, allianceID)
 
-		d.logger.Debug("Fetched session!", "for", s.CharacterName, "cookie", cookie)
+			session.Mutex.Lock()
+			session.Role = permrole
+			session.RefreshDB = time.Now().Add(5 * time.Minute)
+			session.Mutex.Unlock()
+			d.UpdateSiblingSessionRoles(charID, permrole, cookie)
 
-		token := oauth2.Token{
+		} else {
+			//There is a role override
+
+			session.Mutex.Lock()
+			session.Role = dbrole
+			session.RefreshDB = time.Now().Add(5 * time.Minute)
+			session.Mutex.Unlock()
+			d.UpdateSiblingSessionRoles(charID, dbrole, cookie)
+
+		}
+
+		return
+	}
+
+	// do full udpate
+
+	s := &storedSession{}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := d.dbpool.QueryRow(ctx, `SELECT s.CharacterID, s.CharacterName, s.CorporationID, s.AllianceID, s.AccessToken, s.RefreshToken, s.TokenExpiry, s.TokenType, s.NextESISync, COALESCE(r.Role, '[ROLE_UNSET]') as Role
+        FROM sessions s
+        LEFT JOIN roleOverrides r ON s.CharacterID = r.CharacterID
+        WHERE s.Cookie = $1
+    `, cookie).Scan(&s.CharacterID, &s.CharacterName, &s.CorporationID, &s.AllianceID, &s.AccessToken, &s.RefreshToken, &s.TokenExpiry, &s.TokenType, &s.NextESISync, &s.Role)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			d.logger.Debug("No session found in DB", "cookie", cookie)
+			return
+		} else {
+			d.logger.Error("An error occured while fetching from db", "error", err, "cookie", cookie)
+			return
+		}
+	}
+
+	if s.Role == "[ROLE_UNSET]" {
+		_, s.Role = CheckPermissionsAndGetMinimumRole(d.config, s.CharacterID, s.CorporationID, s.AllianceID)
+	}
+	newSession := &types.ActiveAuthenticatedSession{
+		CharID:     s.CharacterID,
+		Name:       s.CharacterName,
+		CorpID:     s.CorporationID,
+		AllianceID: s.AllianceID,
+		Token: &oauth2.Token{
+			TokenType:    s.TokenType,
 			Expiry:       s.TokenExpiry,
 			AccessToken:  s.AccessToken,
 			RefreshToken: s.RefreshToken,
-			TokenType:    s.TokenType,
-		}
-
-		session = &types.ActiveAuthenticatedSession{
-			Mutex:      sync.RWMutex{},
-			Token:      &token,
-			Name:       s.CharacterName,
-			CharID:     s.CharacterID,
-			CorpID:     s.CorporationID,
-			AllianceID: s.AllianceID,
-			RefreshEVE: s.NextESISync,
-			Role:       s.Role,
-			RefreshDB:  time.Now().Add(5 * time.Minute),
-		}
-
-		d.Sessions.Mutex.Lock()
-		defer d.Sessions.Mutex.Unlock()
-		existing_session := d.Sessions.Sessions[cookie]
-
-		if existing_session != nil {
-			//another thread has already updated it
-			d.logger.Debug("Session has been updated b/w first and second check. Performing no update")
-			return
-		}
-
-		d.logger.Debug("Adding session to in-memory pool", "cookie", cookie)
-		d.Sessions.Sessions[cookie] = session
-		return
-
-	} else {
-		d.logger.Debug("Session already present in memory")
-		session.Mutex.Lock()
-		defer session.Mutex.Unlock()
-
-		if !force && session.RefreshDB.After(time.Now()) {
-			d.logger.Debug("Refresh not required")
-			return
-		}
-		d.logger.Debug("Refreshing")
-
-		session.RefreshDB = time.Now().Add(5 * time.Minute)
-
-		d.logger.Debug("Fetching just role from DB")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		var DBRole string
-		err := d.dbpool.QueryRow(ctx, queries["fetchJustRoleFromDB"], cookie).Scan(
-			&DBRole)
-		if err != nil {
-			if errors.Is(err, pgx.ErrNoRows) {
-				d.logger.Debug("No entry Exists, doing full save to DB")
-
-				//Full DB update required - no entry exists
-				//This is only reached occasionally, when a new entry is first made. As such, having a bit of a longer block is acceptable
-				s := &storedSession{
-					CharacterID:   session.CharID,
-					CorporationID: session.CorpID,
-					AllianceID:    session.AllianceID,
-					TokenExpiry:   session.Token.Expiry,
-					TokenType:     session.Token.TokenType,
-					AccessToken:   session.Token.AccessToken,
-					RefreshToken:  session.Token.RefreshToken,
-					NextESISync:   session.RefreshEVE,
-					CharacterName: session.Name,
-					Role:          session.Role,
-				}
-
-				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-
-				_, err = d.dbpool.Exec(ctx, queries["insertOrUpdateAll"],
-					cookie,
-					s.CharacterID,
-					s.CharacterName,
-					s.CorporationID,
-					s.AllianceID,
-					s.AccessToken,
-					s.RefreshToken,
-					s.TokenExpiry,
-					s.TokenType,
-					s.Role,
-					s.NextESISync)
-
-				if err != nil {
-					d.logger.Error("Could not insert new entry", "cookie", cookie, "error", err)
-					return
-				}
-
-				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-
-				_, err = d.dbpool.Exec(ctx, queries["syncSimilarEntries"], cookie)
-
-				if err != nil {
-					d.logger.Error("Entry sync with similar entries - failed", "cookie", cookie, "error", err)
-					return
-				}
-
-				d.logger.Debug("Syncing roles with fixroles on new DB entry")
-				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				_, err := d.dbpool.Exec(ctx, queries["fixRoles"])
-				if err != nil {
-					d.logger.Error("Could not update roles", "error", err)
-					return
-				}
-				//AAaand sync it again to memory
-				d.logger.Debug("Fetching role to memory post sync on new enty")
-
-				ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				var DBRole string
-				err = d.dbpool.QueryRow(ctx, queries["fetchJustRoleFromDB"], cookie).Scan(
-					&DBRole)
-
-				if err != nil {
-					d.logger.Error("Could not fetch roles", "cookie", cookie, "error", err)
-					return
-				}
-
-				session.Role = DBRole
-
-				return
-			} else {
-				d.logger.Error("Fetching DB entry (role check) fail", "error", err)
-				return
-			}
-		}
-
-		d.logger.Debug("Entry Present. Syncing Role FROM database and all other values TO database")
-
-		//Sync just role FROM DB and sync rest TO DB
-		session.Role = DBRole
-
-		s := &storedSession{
-			CharacterID:   session.CharID,
-			CorporationID: session.CorpID,
-			AllianceID:    session.AllianceID,
-			TokenExpiry:   session.Token.Expiry,
-			TokenType:     session.Token.TokenType,
-			AccessToken:   session.Token.AccessToken,
-			RefreshToken:  session.Token.RefreshToken,
-			NextESISync:   session.RefreshEVE,
-			CharacterName: session.Name,
-		}
-
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		_, err = d.dbpool.Exec(ctx, queries["insertOrUpdateAllExceptRole"],
-			cookie,
-			s.CharacterID,
-			s.CharacterName,
-			s.CorporationID,
-			s.AllianceID,
-			s.AccessToken,
-			s.RefreshToken,
-			s.TokenExpiry,
-			s.TokenType,
-			s.NextESISync)
-
-		ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-
-		_, err = d.dbpool.Exec(ctx, queries["syncSimilarEntries"], cookie)
-
-		if err != nil {
-			d.logger.Error("Entry sync with similar entries after update - failed", "cookie", cookie, "error", err)
-			return
-		}
-
+		},
+		Role:       s.Role,
+		RefreshDB:  time.Now().Add(5 * time.Minute),
+		RefreshEVE: s.NextESISync,
+		Mutex:      sync.RWMutex{},
 	}
+
+	d.Sessions.Mutex.Lock()
+
+	//debounce
+	if d.Sessions.Sessions[cookie] != nil {
+		d.Sessions.Mutex.Unlock()
+		return
+	}
+
+	d.Sessions.Sessions[cookie] = newSession
+	d.Sessions.Mutex.Unlock()
+
+	d.charIDMapMutex.RLock()
+
+	var sessionTracker *storedCharIDSessionRelation
+
+	if _, exists := d.charIDSessionMap[s.CharacterID]; exists {
+		sessionTracker = d.charIDSessionMap[s.CharacterID]
+		d.charIDMapMutex.RUnlock()
+		sessionTracker.Mutex.Lock()
+		sessionTracker.sessions = append(sessionTracker.sessions, cookie)
+		sessionTracker.Mutex.Unlock()
+		return
+	}
+	d.charIDMapMutex.RUnlock()
+
+	//add new sessionTracker again
+	d.charIDMapMutex.Lock()
+
+	//debounce check
+	check := d.charIDSessionMap[s.CharacterID]
+	if check != nil {
+		d.charIDMapMutex.Unlock()
+		return
+	}
+
+	sessionTracker = &storedCharIDSessionRelation{
+		sessions: []string{cookie},
+		Mutex:    &sync.RWMutex{},
+	}
+
+	d.charIDSessionMap[s.CharacterID] = sessionTracker
+	d.charIDMapMutex.Unlock()
+
+	d.UpdateSiblingSessionRoles(s.CharacterID, s.Role, cookie)
+
+	return
+
+}
+
+func (d *DatabaseAPI) UpdateSiblingSessionRoles(charID string, role string, exclude string) {
+	d.charIDMapMutex.RLock()
+	cookieTracker := d.charIDSessionMap[charID]
+	d.charIDMapMutex.RUnlock()
+
+	if cookieTracker == nil {
+		d.logger.Error("(UpdateSibling) Sessionlist not found")
+		return
+	}
+
+	cookieTracker.Mutex.RLock()
+	sessionList := make([]string, len(cookieTracker.sessions))
+
+	//Make a copy - this way we have no instance in time where we have 2 mutexes held by one function
+	copy(sessionList, cookieTracker.sessions)
+	cookieTracker.Mutex.RUnlock()
+
+	if len(sessionList) <= 1 {
+		d.logger.Debug("(UpdateSibling) No siblings to update", "charID", charID, "exclude", exclude, "len", len(sessionList))
+		return
+	}
+
+	var sessionsToUpdate []*types.ActiveAuthenticatedSession
+
+	d.Sessions.Mutex.RLock()
+
+	for _, cookie := range sessionList {
+		if cookie == exclude {
+			continue
+		}
+		session := d.Sessions.Sessions[cookie]
+		if session != nil {
+			sessionsToUpdate = append(sessionsToUpdate, session)
+		}
+	}
+	d.Sessions.Mutex.RUnlock()
+
+	for _, session := range sessionsToUpdate {
+		session.Mutex.Lock()
+		session.Role = role
+		session.Mutex.Unlock()
+	}
+
 }
 
 func (d *DatabaseAPI) Delete(cookie string) {
@@ -403,4 +465,37 @@ func (d *DatabaseAPI) Purge(cookie string) {
 		return
 	}
 
+}
+
+func (d *DatabaseAPI) GetSessionsForChar(charID string) []string {
+	d.charIDMapMutex.RLock()
+	sessionTracker := d.charIDSessionMap[charID]
+	d.charIDMapMutex.RUnlock()
+
+	if sessionTracker == nil {
+		d.logger.Warn("(GetSessionForChar) No session tracker found", "charID", charID)
+		return []string{}
+	}
+
+	sessionTracker.Mutex.RLock()
+	sessions := make([]string, len(sessionTracker.sessions))
+	copy(sessions, sessionTracker.sessions)
+	sessionTracker.Mutex.RUnlock()
+
+	return sessions
+}
+
+func (d *DatabaseAPI) PutSessionForChar(charID string, cookie string) {
+	d.charIDMapMutex.RLock()
+	sessionTracker := d.charIDSessionMap[charID]
+	d.charIDMapMutex.RUnlock()
+
+	if sessionTracker == nil {
+		d.logger.Error("(PutSessionForChar) No tracker for charID. Was it never initialized via a DB fetch or insert first?", "charID", charID)
+		return
+	}
+
+	sessionTracker.Mutex.Lock()
+	sessionTracker.sessions = append(sessionTracker.sessions, cookie)
+	sessionTracker.Mutex.Unlock()
 }

@@ -78,7 +78,7 @@ func (es *ESIService) HandleIncomingAuth(w http.ResponseWriter, r *http.Request)
 
 	if !allowed {
 		es.logger.Error("Redirect URL not valid, rejecting request", "provided", redirect)
-		http.Redirect(w, r, es.HostedAt+"login", http.StatusExpectationFailed)
+		http.Redirect(w, r, es.HostedAt+"/login", http.StatusExpectationFailed)
 		return
 	}
 
@@ -112,14 +112,14 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 	if es.ActiveAuthSessions.sessions[state] == nil {
 		es.ActiveAuthSessions.mutex.Unlock()
 		es.logger.Error("Invalid state", "provided", state)
-		http.Redirect(w, r, es.HostedAt+"login", http.StatusBadRequest)
+		http.Redirect(w, r, es.HostedAt+"/login", http.StatusBadRequest)
 		return
 	}
 
 	if time.Now().After(es.ActiveAuthSessions.sessions[state].ExpireAt) {
 		es.logger.Error("State expired", "provided", state, "expired at", es.ActiveAuthSessions.sessions[state].ExpireAt)
 		es.ActiveAuthSessions.mutex.Unlock()
-		http.Redirect(w, r, es.HostedAt+"login", http.StatusBadRequest)
+		http.Redirect(w, r, es.HostedAt+"/login", http.StatusBadRequest)
 		return
 	}
 
@@ -175,7 +175,7 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 		Path:    "/",
 	})
 
-	es.databaseAPI.SyncMemory(SessionCookie, true)
+	es.databaseAPI.Commit(SessionCookie)
 
 	http.Redirect(w, r, "http"+(If(es.config.Server.Is_Secure, "s", ""))+"://"+es.config.Server.Domain+"/"+es.config.Server.Prefix+"/success?redirect="+redirect, 200)
 }
@@ -227,7 +227,7 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	CorporationID := strconv.Itoa(result.CorpID)
 	token, err := tokenSrc.Token()
 
-	allow, role := CheckPermissionsAndGetMinimumRole(es.config, strconv.Itoa(int(claims.CharacterID)), CorporationID, AllianceID)
+	allow, role := database.CheckPermissionsAndGetMinimumRole(es.config, strconv.Itoa(int(claims.CharacterID)), CorporationID, AllianceID)
 
 	if !allow {
 		return errors.New("Unauthorised")
@@ -235,11 +235,13 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 
 	es.logger.Debug("Fetched character "+strconv.Itoa(int(claims.CharacterID)), "name", claims.CharacterName, "corp", CorporationID, "alliance", AllianceID, "role", role)
 
+	newRefreshTime := time.Now().Add(12 * time.Hour)
+
 	StoredSession.AllianceID = AllianceID
 	StoredSession.CorpID = CorporationID
 	StoredSession.CharID = strconv.Itoa(int(claims.CharacterID))
 	StoredSession.Name = claims.CharacterName
-	StoredSession.RefreshEVE = time.Now().Add(12 * time.Hour)
+	StoredSession.RefreshEVE = newRefreshTime
 	StoredSession.Token = token
 	StoredSession.Role = role
 
@@ -247,7 +249,28 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 
 	if optionalCookie != "" {
 		es.logger.Debug("ESI Fetch complete. Triggering database resync...")
-		es.databaseAPI.SyncMemory(optionalCookie, true)
+		es.databaseAPI.Commit(optionalCookie)
+	}
+
+	for _, sessionToken := range es.databaseAPI.GetSessionsForChar(strconv.Itoa(int(claims.CharacterID))) {
+		if sessionToken == optionalCookie {
+			continue
+		}
+		es.ActiveLoggedInSessions.Mutex.RLock()
+		session := es.ActiveLoggedInSessions.Sessions[sessionToken]
+		es.ActiveLoggedInSessions.Mutex.RUnlock()
+		if session == nil {
+			continue
+		}
+		session.Mutex.Lock()
+		session.AllianceID = AllianceID
+		session.CorpID = CorporationID
+		session.Name = claims.CharacterName
+		session.RefreshEVE = newRefreshTime
+		//We do not update the role. Those will update naturally on next DB sync
+		session.Token = token
+
+		session.Mutex.Unlock()
 	}
 
 	return nil
@@ -274,8 +297,9 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 				Allow: false,
 			}
 		} else {
-			es.logger.Debug("Attempting DB sync", "cookie", cookie)
-			es.databaseAPI.SyncMemory(cookie, false)
+			es.logger.Debug("Attempting DB sync for nil session", "cookie", cookie)
+			es.databaseAPI.Fetch(cookie, false)
+			es.logger.Debug("Recursive call post DB fetch (nil session)")
 			return es.VerifyUser(cookie, true)
 		}
 
@@ -284,10 +308,7 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 	err := es.UpdateEVEInfo(session, false, cookie)
 
 	if err != nil {
-		es.logger.Error("Update Eve Info returned error - clearing stored session and denying", "cookie", cookie, "error", err)
-		es.ActiveLoggedInSessions.Mutex.Lock()
-		delete(es.ActiveLoggedInSessions.Sessions, cookie)
-		es.ActiveLoggedInSessions.Mutex.Unlock()
+		es.logger.Error("Update Eve Info returned error - denying", "cookie", cookie, "error", err)
 
 		es.databaseAPI.Delete(cookie)
 
@@ -304,7 +325,9 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 	session.Mutex.RUnlock()
 
 	if time.Now().After(DBUpdateTime) {
-		es.databaseAPI.SyncMemory(cookie, false)
+		es.logger.Debug("Doing DB fetch as cache invalid")
+		es.databaseAPI.Fetch(cookie, false)
+		es.logger.Debug("Recursive call post DB fetch...")
 		return es.VerifyUser(cookie, true)
 	}
 
@@ -316,53 +339,22 @@ func (es *ESIService) VerifyUser(cookie string, doNotSync bool) *UserAuthDetails
 	}
 
 	session.Mutex.RLock()
-	allow, minRole := CheckPermissionsAndGetMinimumRole(es.config, session.CharID, session.CorpID, session.AllianceID)
+	allow, minRole := database.CheckPermissionsAndGetMinimumRole(es.config, session.CharID, session.CorpID, session.AllianceID)
 	session.Mutex.RUnlock()
 
 	final.Allow = allow
-	if final.Role == es.config.Database.Default_Role || final.Role == es.config.Overrides.Guest_Role {
-		// if Role is one of the defaults, then change it here depending on allow status
+
+	// If someone has left the alliance/corp, and guest access is enabled,
+	// this prevents them from being assigned a higher role than the base Guest role.
+	// if guest access is not enabled, then "allow" is false anyway, and their role is disregarded.
+
+	if minRole == es.config.Overrides.Guest_Role {
 		final.Role = minRole
 	}
 
+	es.logger.Debug("Returning", "allow", final.Allow, "role", final.Role)
+
 	return final
-}
-
-func CheckPermissionsAndGetMinimumRole(config *types.Config, charID string, corpID string, allianceID string) (bool, string) {
-	guestMode := config.Overrides.Guest_Role == ""
-
-	allow := false
-	for _, uid := range config.Overrides.Super_Admin_IDs {
-		if uid == charID {
-			allow = true
-		}
-	}
-
-	for _, cid := range config.Overrides.Corp_Allow {
-		if cid == corpID {
-			allow = true
-		}
-	}
-
-	for _, aid := range config.Overrides.Alliance_Allow {
-		if aid == allianceID {
-			allow = true
-		}
-	}
-
-	if !allow {
-		if guestMode {
-			//allow as guest
-			return true, config.Overrides.Guest_Role
-		} else {
-			//deny with no role
-			return false, ""
-		}
-	}
-
-	//allow as member
-	return allow, config.Database.Default_Role
-
 }
 
 // TERNARY SUPPORT ?
