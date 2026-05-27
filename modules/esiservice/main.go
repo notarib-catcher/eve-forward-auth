@@ -185,10 +185,10 @@ func (es *ESIService) HandleAfterSSO(w http.ResponseWriter, r *http.Request) {
 func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSession, force bool, optionalCookie string) error {
 
 	StoredSession.Mutex.Lock()
-	defer StoredSession.Mutex.Unlock()
 	if !force {
 		if time.Now().Before(StoredSession.RefreshEVE) {
 			es.logger.Debug("Skipping ESI fetch")
+			StoredSession.Mutex.Unlock()
 			return nil
 		}
 	}
@@ -200,17 +200,20 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	claims, err := es.SSOAuthenticator.Verify(tokenSrc)
 
 	if err != nil {
+		StoredSession.Mutex.Unlock()
 		return err
 	}
 
 	res, err := http.Get("https://esi.evetech.net/characters/" + strconv.Itoa(int(claims.CharacterID)))
 	if err != nil {
 		es.logger.Error("ESI Public Fetch Error", "CharID", claims.CharacterID, "error", err)
+		StoredSession.Mutex.Unlock()
 		return errors.New(("ESI Public Fetch Error"))
 	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
+		StoredSession.Mutex.Unlock()
 		return err
 	}
 
@@ -222,6 +225,7 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	var result extractInfo
 	err = json.Unmarshal(body, &result)
 	if err != nil {
+		StoredSession.Mutex.Unlock()
 		return err
 	}
 
@@ -235,6 +239,7 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	if !allow {
 		//if allow is false and no guest role applicable, deny
 		if es.config.Overrides.Guest_Role == "" {
+			StoredSession.Mutex.Unlock()
 			return errors.New("Unauthorised")
 		}
 		role = es.config.Overrides.Guest_Role
@@ -253,6 +258,8 @@ func (es *ESIService) UpdateEVEInfo(StoredSession *types.ActiveAuthenticatedSess
 	StoredSession.Role = role
 
 	es.logger.Debug("Stored character " + strconv.Itoa(int(claims.CharacterID)) + " to memory")
+
+	StoredSession.Mutex.Unlock()
 
 	// if VerifyUser calls it, optionalCookie is populated and we need to commit here
 	// However if it is called during login flow, then the commit will happen in the login flow handler and not here
