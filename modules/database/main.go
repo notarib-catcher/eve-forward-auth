@@ -14,6 +14,8 @@ import (
 	"golang.org/x/oauth2"
 )
 
+const MAX_RETRY_COUNT = 10
+
 type DatabaseAPI struct {
 	logger           *log.Logger
 	ShutdownSignal   context.Context
@@ -47,10 +49,17 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 	if err != nil {
 		logger.Fatal("Could not initialise CRON scheduler", "error", err)
 	}
+	// Put cron jobs here
+	// --- NONE ATM ---
+	// End of cron jobs
 
-	defer s.Start()
+	success := initDatabase(logger, dbpool, 1)
 
-	logger.Info("Database Connected.")
+	if !success {
+		logger.Fatal("Could not initialize database!", "attempts", MAX_RETRY_COUNT)
+	}
+
+	logger.Info("Database initialized.")
 	CleanupTracker.Go(func() {
 		<-ShutdownSignal.Done()
 		done := make(chan int, 1)
@@ -76,39 +85,7 @@ func NewDB(logger *log.Logger, ShutdownSignal context.Context, CleanupTracker *s
 
 	})
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err = dbpool.Exec(ctx, `CREATE TABLE IF NOT EXISTS sessions (
-		Cookie          VARCHAR        NOT NULL,
-		CharacterID     VARCHAR        NOT NULL,
-		CharacterName   VARCHAR        NOT NULL,
-		CorporationID   VARCHAR        NOT NULL,
-		AllianceID      VARCHAR        NOT NULL,
-		AccessToken     VARCHAR        NOT NULL,
-		RefreshToken	VARCHAR		NOT NULL,
-		TokenExpiry     TIMESTAMPTZ NOT NULL,
-		TokenType       VARCHAR        NOT NULL,
-		NextESISync     TIMESTAMPTZ NOT NULL,
-
-		PRIMARY KEY (Cookie)
-		);
-		CREATE INDEX IF NOT EXISTS idx_sessions_characterid ON sessions (CharacterID);`)
-	if err != nil {
-		logger.Fatal("Could not init session table", "error", err)
-	}
-
-	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	_, err = dbpool.Exec(ctx, `CREATE TABLE IF NOT EXISTS roleOverrides (
-		CharacterID     VARCHAR        NOT NULL,
-		Role         	VARCHAR        NOT NULL,
-
-		PRIMARY KEY (CharacterID)
-		);`)
-	if err != nil {
-		logger.Fatal("Could not init role update table", "error", err)
-	}
-
+	defer s.Start()
 	return &DatabaseAPI{
 		logger:           logger,
 		ShutdownSignal:   ShutdownSignal,
@@ -534,4 +511,58 @@ func (d *DatabaseAPI) PutSessionForChar(charID string, cookie string) {
 	sessionTracker.Mutex.Lock()
 	sessionTracker.sessions = append(sessionTracker.sessions, cookie)
 	sessionTracker.Mutex.Unlock()
+}
+
+func initDatabase(logger *log.Logger, dbpool *pgxpool.Pool, retrycount uint8) bool {
+	logger.Info("Attempting to initialize database...", "attempt", retrycount)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err := dbpool.Exec(ctx, `CREATE TABLE IF NOT EXISTS sessions (
+		Cookie          VARCHAR        NOT NULL,
+		CharacterID     VARCHAR        NOT NULL,
+		CharacterName   VARCHAR        NOT NULL,
+		CorporationID   VARCHAR        NOT NULL,
+		AllianceID      VARCHAR        NOT NULL,
+		AccessToken     VARCHAR        NOT NULL,
+		RefreshToken	VARCHAR		NOT NULL,
+		TokenExpiry     TIMESTAMPTZ NOT NULL,
+		TokenType       VARCHAR        NOT NULL,
+		NextESISync     TIMESTAMPTZ NOT NULL,
+
+		PRIMARY KEY (Cookie)
+		);
+		CREATE INDEX IF NOT EXISTS idx_sessions_characterid ON sessions (CharacterID);`)
+	if err != nil {
+		logger.Error("Could not init session table", "error", err)
+		retrycount += 1
+		if retrycount < MAX_RETRY_COUNT {
+			logger.Info("Waiting and retrying...")
+			time.Sleep(3 * time.Second)
+			return initDatabase(logger, dbpool, retrycount)
+		} else {
+			return false
+		}
+	}
+
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = dbpool.Exec(ctx, `CREATE TABLE IF NOT EXISTS roleOverrides (
+		CharacterID     VARCHAR        NOT NULL,
+		Role         	VARCHAR        NOT NULL,
+
+		PRIMARY KEY (CharacterID)
+		);`)
+	if err != nil {
+		logger.Error("Could not init role update table", "error", err)
+		retrycount += 1
+		if retrycount < MAX_RETRY_COUNT {
+			logger.Info("Waiting and retrying...")
+			time.Sleep(3 * time.Second)
+			return initDatabase(logger, dbpool, retrycount)
+		} else {
+			return false
+		}
+	}
+
+	return true
 }
