@@ -155,13 +155,14 @@ class PixelCanvas extends HTMLElement {
     this.resizeObserver = new ResizeObserver(() => this.init());
     this.resizeObserver.observe(this);
 
+    if (this.noFocus) {
+        this.handleAnimation("appear");
+        return
+    }
+
     this._parent.addEventListener("mouseenter", this);
     this._parent.addEventListener("mouseleave", this);
 
-    if (!this.noFocus) {
-      this._parent.addEventListener("focusin", this);
-      this._parent.addEventListener("focusout", this);
-    }
   }
 
   disconnectedCallback() {
@@ -170,7 +171,8 @@ class PixelCanvas extends HTMLElement {
     this._parent.removeEventListener("mouseleave", this);
 
     if (!this.noFocus) {
-      this.handleAnimation("appear");
+      this._parent.removeEventListener("focusin", this);
+      this._parent.removeEventListener("focusout", this);
     }
 
     delete this._parent;
