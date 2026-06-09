@@ -155,7 +155,7 @@ class PixelCanvas extends HTMLElement {
     this.resizeObserver = new ResizeObserver(() => this.init());
     this.resizeObserver.observe(this);
 
-    this._parent.addEventListener("load", this);
+    this.start()
   }
 
   disconnectedCallback() {
