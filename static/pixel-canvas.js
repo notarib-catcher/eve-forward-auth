@@ -155,13 +155,7 @@ class PixelCanvas extends HTMLElement {
     this.resizeObserver = new ResizeObserver(() => this.init());
     this.resizeObserver.observe(this);
 
-    this._parent.addEventListener("mouseenter", this);
-    this._parent.addEventListener("mouseleave", this);
-
-    if (!this.noFocus) {
-      this._parent.addEventListener("focusin", this);
-      this._parent.addEventListener("focusout", this);
-    }
+    this._parent.addEventListener("load", this);
   }
 
   disconnectedCallback() {
@@ -178,26 +172,13 @@ class PixelCanvas extends HTMLElement {
   }
 
   handleEvent(event) {
-    this[`on${event.type}`](event);
+    this[`start`](event);
   }
 
-  onmouseenter() {
+  start() {
     this.handleAnimation("appear");
   }
 
-  onmouseleave() {
-    this.handleAnimation("disappear");
-  }
-
-  onfocusin(e) {
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    this.handleAnimation("appear");
-  }
-
-  onfocusout(e) {
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    this.handleAnimation("disappear");
-  }
 
   handleAnimation(name) {
     cancelAnimationFrame(this.animation);
