@@ -10,9 +10,15 @@
     <!-- END INCLUDE -->
 </head>
   <body class=" bg-black">
+    <script src="./static/pixel-canvas.js" type="module"></script>
     <!--CONTENT-->
     <div id="wrapper" class="d-flex justify-content-center align-items-center vh-100">
-        <img class="position-absolute z-n1 vh-100" src="https://imgs.search.brave.com/PHZCVCbaQaQQnc5UKndpvy0Hgow7KERjKi7VN5x62HE/rs:fit:860:0:0:0/g:ce/aHR0cHM6Ly93YWxs/cGFwZXJhY2Nlc3Mu/Y29tL2Z1bGwvMzU0/OTI0NS5qcGc">
+        <pixel-canvas
+          data-gap="10"
+          data-speed="25"
+          data-colors="#e0f2fe, #7dd3fc, #0ea5e9"
+          data-no-focus="true"
+        ></pixel-canvas>
         <div class="bg-light p-2 rounded shadow position-absolute z-0">
           You are logged in. <br>
           <span class="text-primary"> The current character has access to protected services</span>
