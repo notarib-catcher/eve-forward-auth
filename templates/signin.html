@@ -7,41 +7,29 @@
     <meta property="og:description" content="Log in with your EVE Online account to access this resource" />
     <meta property="og:type" content="website" />
     <title>{{ .Name }} - Sign in</title>
+    <link rel="stylesheet" href="/static/app.css">
 </head>
-  <body class=" bg-black">
-    <script src="./static/pixel-canvas.js" type="module"></script>
-    <!--CONTENT-->
-    <style>
-      .lelement {
-        background-color: #000;
-        color: #fff;
-        transition: filter 0.3s ease;
-      }
-
-      .lelement:hover {
-        filter: invert(100%);
-      }
-    </style>
-    <div id="wrapper" class="d-flex justify-content-center align-items-center vh-100">
-        <pixel-canvas
+  <body class="k">
+    <div class="  flex flex-col w-[100dvw] h-[100dvh] z-0 items-center justify-center">
+      <div class="z-0 absolute w-full h-full top-0 left-0">
+          <pixel-canvas
           data-gap="15"
           data-speed="25"
           data-colors="#e0f2fe, #7dd3fc, #0ea5e9"
           data-no-focus="true"
         ></pixel-canvas>
-        <div class="bg-light p-2 rounded shadow position-absolute z-0">
-          <button onclick="handleLogin()" class="p-0 border-0">
-            <img src="./static/sso.png" width="300px" class="lelement">
-          </button>
+      </div>
+      <div class="relative self-center bg-[#00000f] h-10 w-10 ">
 
-          <script>
+      </div>
+
+    </div>
+    <!--  -->
+        <script>
             function handleLogin() {
               const redirect = new URLSearchParams(window.location.search).get('redirect');
               window.location.href = './dologin' + (redirect ? '?redirect=' + encodeURIComponent(redirect) : '');
             }
           </script>
-        </div>
-
-    </div>
 </body>
 </html>

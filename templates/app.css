@@ -1,1 +1,78 @@
-@import "tailwindcss";
+@import "tailwindcss"
+
+:root {
+  /* Background */
+  --bg:              #00000f;
+ 
+  /* Text ramp (single blue hue, 6 levels) */
+  --text-dim:        #1e4a5e;
+  --text-mid:        #2a5a70;
+  --text-base:       #3a7fa0;
+  --text-bright:     #7ab3d4;
+  --text-high:       #a8d8f0;
+  --text-white:      #e0f4ff;
+ 
+  /* Borders / surfaces */
+  --border:          #1a4a60;
+  --surface:         rgba(0, 8, 20, 0.92);
+ 
+  /* Semantic accents */
+  --accent-teal:     #4af0c8;
+  --accent-amber:    #f0c84a;
+  --accent-red:      #f04a4a;
+  --accent-purple:   #a04af0;
+ 
+  /* Typography */
+  --font:            'Courier New', Courier, monospace;
+  --tracking-sm:     0.1em;
+  --tracking-md:     0.2em;
+  --tracking-lg:     0.35em;
+}
+ 
+/* ─── BASE ───────────────────────────────────────────────────────────────────*/
+body {
+  background:   var(--bg);
+  color:        var(--text-bright);
+  font-family:  var(--font);
+  font-weight:  normal;
+  font-size:    11px;
+  line-height:  2;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-md);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family:  var(--font);
+  font-weight:  normal;
+  text-transform: uppercase;
+  color:        var(--text-high);
+}
+ 
+h1 { font-size: 18px; letter-spacing: var(--tracking-lg); }
+h2 { font-size: 14px; letter-spacing: var(--tracking-lg); color: var(--text-white); }
+h3 { font-size: 12px; letter-spacing: var(--tracking-md); }
+h4 { font-size: 11px; letter-spacing: var(--tracking-md); color: var(--text-base); }
+ 
+
+p {
+  font-size:      11px;
+  letter-spacing: var(--tracking-sm);
+  color:          var(--text-bright);
+  line-height:    2;
+  text-transform: none; /* prose stays mixed case */
+}
+ 
+/* Dimmed secondary text */
+.text-dim    { color: var(--text-dim);    }
+.text-mid    { color: var(--text-mid);    }
+.text-base   { color: var(--text-base);   }
+.text-bright { color: var(--text-bright); }
+.text-high   { color: var(--text-high);   }
+.text-white  { color: var(--text-white);  }
+ 
+/* Accent value — for stats, numbers, highlighted data */
+.value {
+  color:          var(--accent-teal);
+  letter-spacing: var(--tracking-sm);
+}
