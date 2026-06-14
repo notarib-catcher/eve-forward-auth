@@ -9,6 +9,8 @@
     monospace;
     --color-black: #000;
     --spacing: 0.25rem;
+    --text-lg: 1.125rem;
+    --text-lg--line-height: calc(1.75 / 1.125);
     --default-transition-duration: 150ms;
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
     --default-font-family: var(--font-sans);
@@ -18,6 +20,7 @@
     --color-eve-surface: rgba(0, 8, 20, 0.92);
     --color-eve-bright: #7ab3d4;
     --color-eve-red: #f04a4a;
+    --font-family-eve: "Courier New", Courier, monospace;
   }
 }
 @layer base {
@@ -193,6 +196,9 @@
   .flex {
     display: flex;
   }
+  .grid {
+    display: grid;
+  }
   .table {
     display: table;
   }
@@ -201,6 +207,9 @@
   }
   .h-\[100vh\] {
     height: 100vh;
+  }
+  .h-fit {
+    height: fit-content;
   }
   .h-full {
     height: 100%;
@@ -228,6 +237,12 @@
   }
   .resize {
     resize: both;
+  }
+  .grid-cols-1 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+  .grid-rows-2 {
+    grid-template-rows: repeat(2, minmax(0, 1fr));
   }
   .flex-col {
     flex-direction: column;
@@ -270,8 +285,18 @@
   .p-2 {
     padding: calc(var(--spacing) * 2);
   }
+  .text-center {
+    text-align: center;
+  }
   .align-middle {
     vertical-align: middle;
+  }
+  .font-family-eve {
+    font-family: var(--font-family-eve);
+  }
+  .text-lg {
+    font-size: var(--text-lg);
+    line-height: var(--tw-leading, var(--text-lg--line-height));
   }
   .text-eve-bright {
     color: var(--color-eve-bright);
