@@ -1,1 +1,36 @@
-@import "tailwindcss"
+@import "tailwindcss";
+
+@theme {
+  /* ─── COLORS ────────────────────────────────────────────────────────────── */
+  --color-eve-bg:       #00000f;
+  --color-eve-border:   #1a4a60;
+  --color-eve-surface:  rgba(0, 8, 20, 0.92);
+
+  /* Text ramp */
+  --color-eve-dim:      #1e4a5e;
+  --color-eve-mid:      #2a5a70;
+  --color-eve-base:     #3a7fa0;
+  --color-eve-bright:   #7ab3d4;
+  --color-eve-high:     #a8d8f0;
+  --color-eve-white:    #e0f4ff;
+
+  /* Accents */
+  --color-eve-teal:     #4af0c8;
+  --color-eve-amber:    #f0c84a;
+  --color-eve-red:      #f04a4a;
+  --color-eve-purple:   #a04af0;
+
+  /* ─── FONT FAMILY ───────────────────────────────────────────────────────── */
+  --font-family-eve:    "Courier New", Courier, monospace;
+
+  /* ─── FONT SIZE ─────────────────────────────────────────────────────────── */
+  --font-size-eve-xs:   10px;
+  --font-size-eve-sm:   11px;
+  --font-size-eve-md:   13px;
+  --font-size-eve-lg:   18px;
+
+  /* ─── LETTER SPACING ────────────────────────────────────────────────────── */
+  --tracking-eve-sm:    0.1em;
+  --tracking-eve-md:    0.2em;
+  --tracking-eve-lg:    0.35em;
+}
