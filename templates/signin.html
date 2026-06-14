@@ -11,6 +11,7 @@
   <body class="bg-eve-bg">
     <script type="module" src="/static/pixel-canvas.js"></script>
     <link rel="stylesheet" href="/static/app.css">
+
 <style>
   @property --p {
     syntax: "<percentage>";
@@ -40,9 +41,6 @@
     --p: 100%;
   }
 
-</style>
-
-<style>
   .login-overlay {
     position: absolute;
     inset: 0;
@@ -83,7 +81,7 @@
           data-no-focus="true"
         ></pixel-canvas>
       </div>
-      <div class="login-box" flex items-center justify-center relative self-center p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 font-eve text-eve-lg text-eve-bright">
+      <div class="login-box flex items-center justify-center relative self-center p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 font-eve text-eve-lg text-eve-bright">
         <button id="loginbtn" class="disabled:invert-25 transition-all duration-150" onclick="handleLogin()">
           <img src="/static/sso.png" height="100px" class="hover:cursor-pointer">
         </button>
@@ -97,7 +95,7 @@
         <script>
             function handleLogin() {
               document.getElementById("loginbtn").disabled = true
-              document.getElementById("login-overlay").classList.add("active")
+              document.getElementById('login-overlay').classList.add('active');
               const redirect = new URLSearchParams(window.location.search).get('redirect');
               window.location.href = './dologin' + (redirect ? '?redirect=' + encodeURIComponent(redirect) : '');
             }
