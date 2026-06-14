@@ -65,6 +65,8 @@ func NewAuthServer(logger *log.Logger, ShutdownSignal context.Context, CleanupTr
 			logger.Fatal("Could not parse ./templates/"+file.Name(), "error", err)
 		}
 
+		logger.Info("Loaded Template", "name", name)
+
 		a.templates[name] = tmpl
 	}
 
