@@ -21,5 +21,5 @@ type AuthServer struct {
 }
 
 type pageData struct {
-	Title string
+	Name string
 }

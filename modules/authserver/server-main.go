@@ -28,7 +28,7 @@ func NewAuthServer(logger *log.Logger, ShutdownSignal context.Context, CleanupTr
 		config:         Config,
 		templates:      make(map[string]*template.Template),
 		staticData: &pageData{
-			Title: Config.Name,
+			Name: Config.Name,
 		},
 	}
 
