@@ -40,6 +40,10 @@ func NewAuthServer(logger *log.Logger, ShutdownSignal context.Context, CleanupTr
 		logger.Fatal("Could not read the ./templates directory", "error", err)
 	}
 
+	if len(files) == 0 {
+		logger.Fatal("No templates were found! By default, success.html, forbidden.html and signin.html are needed for basic functions")
+	}
+
 	for _, file := range files {
 		if file.IsDir() {
 			logger.Debug("./templates/" + file.Name() + " is directory, skipping...")
