@@ -161,7 +161,7 @@ func (a *AuthServer) ssoCallbackWrapper(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *AuthServer) signinPage(w http.ResponseWriter, r *http.Request) {
-	s.serveStaticTemplate("login", w, r)
+	s.serveStaticTemplate("signin", w, r)
 }
 
 func (s *AuthServer) forbiddenPage(w http.ResponseWriter, r *http.Request) {
