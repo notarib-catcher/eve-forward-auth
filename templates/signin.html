@@ -73,16 +73,16 @@
 </style>
 
     <div class="flex flex-col w-[100dvw] h-[100dvh] z-0 items-center justify-center">
-      <div class="z-0 absolute w-full h-full top-0 left-0">
-          <pixel-canvas
+      <div class="absolute w-full h-full top-0 left-0">
+          <pixel-canvas class=" -z-10"
           data-gap="15"
           data-speed="25"
           data-colors="#e0f2fe, #7dd3fc, #0ea5e9"
           data-no-focus="true"
         ></pixel-canvas>
       </div>
-      <div class="login-box p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 grid-cols-1 grid-rows-2 grid">
-        <div class=" w-full h-fit text-center font-family-eve text-eve-bright text-lg">SERVER: {{ .Name }}</div>
+      <div class="z-10 login-box p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 grid-cols-1 grid-rows-2 grid">
+        <div class=" w-full h-fit text-center font-family-eve text-eve-bright text-sm">{{ .Name }}</div>
         <button id="loginbtn" class="disabled:invert-25 transition-all duration-150" onclick="handleLogin()">
           <img src="/static/sso.png" height="100px" class="hover:cursor-pointer">
         </button>
