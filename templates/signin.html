@@ -11,6 +11,11 @@
   <body class="bg-eve-bg">
     <script type="module" src="/static/pixel-canvas.js"></script>
     <link rel="stylesheet" href="/static/app.css">
+    <style>
+      .login-box:has(button:hover) {
+        border-color: var(--color-eve-red);
+      }
+    </style>
     <div class="flex flex-col w-[100dvw] h-[100dvh] z-0 items-center justify-center">
       <div class="z-0 absolute w-full h-full top-0 left-0">
           <pixel-canvas
@@ -20,9 +25,9 @@
           data-no-focus="true"
         ></pixel-canvas>
       </div>
-      <div class="flex items-center justify-center relative self-center p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 font-eve text-eve-lg text-eve-bright">
+      <div class="login-box flex items-center justify-center relative self-center p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 font-eve text-eve-lg text-eve-bright">
         <button class=" hover:invert-100 transition-all duration-150" onclick="handleLogin()">
-          <img src="/static/sso.png" height="100px">
+          <img src="/static/sso.png" height="100px" class="hover:cursor-pointer">
         </button>
       </div>
 

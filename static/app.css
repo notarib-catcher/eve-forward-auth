@@ -17,6 +17,7 @@
     --color-eve-border: #1a4a60;
     --color-eve-surface: rgba(0, 8, 20, 0.92);
     --color-eve-bright: #7ab3d4;
+    --color-eve-red: #f04a4a;
   }
 }
 @layer base {
@@ -299,6 +300,13 @@
   .duration-150 {
     --tw-duration: 150ms;
     transition-duration: 150ms;
+  }
+  .hover\:cursor-pointer {
+    &:hover {
+      @media (hover: hover) {
+        cursor: pointer;
+      }
+    }
   }
   .hover\:invert-100 {
     &:hover {
