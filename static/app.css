@@ -14,6 +14,8 @@
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
     --color-eve-bg: #00000f;
+    --color-eve-border: #1a4a60;
+    --color-eve-surface: rgba(0, 8, 20, 0.92);
     --color-eve-bright: #7ab3d4;
   }
 }
@@ -242,6 +244,13 @@
     border-style: var(--tw-border-style);
     border-width: 1px;
   }
+  .border-2 {
+    border-style: var(--tw-border-style);
+    border-width: 2px;
+  }
+  .border-eve-border {
+    border-color: var(--color-eve-border);
+  }
   .bg-\[\#00000f\] {
     background-color: #00000f;
   }
@@ -250,6 +259,9 @@
   }
   .bg-eve-bg {
     background-color: var(--color-eve-bg);
+  }
+  .bg-eve-surface {
+    background-color: var(--color-eve-surface);
   }
   .p-2 {
     padding: calc(var(--spacing) * 2);
