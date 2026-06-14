@@ -1,13 +1,17 @@
 package authserver
 
 import (
+	"bytes"
 	"context"
 	"eve-forward-auth/modules/esiservice"
 	"eve-forward-auth/types"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +26,46 @@ func NewAuthServer(logger *log.Logger, ShutdownSignal context.Context, CleanupTr
 		CleanupTracker: CleanupTracker,
 		EVEClient:      EVEClient,
 		config:         Config,
+		templates:      make(map[string]*template.Template),
+		staticData: &pageData{
+			Title: Config.Name,
+		},
+	}
+
+	logger.Info("Loading templates...")
+
+	files, err := os.ReadDir("./templates")
+
+	if err != nil {
+		logger.Fatal("Could not read the ./templates directory", "error", err)
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			logger.Debug("./templates/" + file.Name() + " is directory, skipping...")
+			continue
+		}
+
+		if !strings.HasSuffix(file.Name(), ".html") {
+			logger.Debug("./templates/" + file.Name() + " is not .html, skipping...")
+			continue
+		}
+
+		name := file.Name()[:len(file.Name())-5]
+
+		content, err := os.ReadFile("./templates/" + file.Name())
+
+		if err != nil {
+			logger.Fatal("Could not read ./templates/"+file.Name(), "error", err)
+		}
+
+		tmpl, err := template.New(name).Parse(string(content))
+
+		if err != nil {
+			logger.Fatal("Could not parse ./templates/"+file.Name(), "error", err)
+		}
+
+		a.templates[name] = tmpl
 	}
 
 	logger.Info("Setting handler functions")
@@ -111,15 +155,15 @@ func (a *AuthServer) ssoCallbackWrapper(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *AuthServer) signinPage(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "templates/signin.html")
+	s.serveStaticTemplate("login", w, r)
 }
 
 func (s *AuthServer) forbiddenPage(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "templates/forbidden.html")
+	s.serveStaticTemplate("forbidden", w, r)
 }
 
 func (s *AuthServer) successPage(w http.ResponseWriter, r *http.Request) {
-	http.ServeFile(w, r, "templates/success.html")
+	s.serveStaticTemplate("success", w, r)
 }
 
 func (s *AuthServer) logout(w http.ResponseWriter, r *http.Request) {
@@ -227,4 +271,26 @@ func extractBaseURL(rawURL string) string {
 
 	// Construct the base URL with scheme, host, and a trailing slash
 	return fmt.Sprintf("%s://%s/", parsedURL.Scheme, parsedURL.Host)
+}
+
+func (s *AuthServer) serveStaticTemplate(pageName string, w http.ResponseWriter, r *http.Request) {
+	tmpl, exists := s.templates[pageName]
+
+	if !exists {
+		s.logger.Error("(serveStaticTemplate) Could not find template", "name", pageName)
+		http.NotFound(w, r)
+		return
+	}
+
+	var buf bytes.Buffer
+
+	err := tmpl.Execute(&buf, s.staticData)
+	if err != nil {
+		s.logger.Error("(serveStaticTemplate) Error while executing template", "name", pageName, "error", err)
+		http.Error(w, "Internal Server Error - Please try again later", 503)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+	buf.WriteTo(w)
 }

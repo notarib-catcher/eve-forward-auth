@@ -4,6 +4,7 @@ import (
 	"context"
 	"eve-forward-auth/modules/esiservice"
 	"eve-forward-auth/types"
+	"html/template"
 	"sync"
 
 	log "github.com/charmbracelet/log"
@@ -15,4 +16,10 @@ type AuthServer struct {
 	CleanupTracker *sync.WaitGroup
 	EVEClient      *esiservice.ESIService
 	config         types.Config
+	templates      map[string]*template.Template
+	staticData     *pageData
+}
+
+type pageData struct {
+	Title string
 }
