@@ -203,6 +203,9 @@
   .h-full {
     height: 100%;
   }
+  .min-h-10 {
+    min-height: calc(var(--spacing) * 10);
+  }
   .w-10 {
     width: calc(var(--spacing) * 10);
   }
@@ -214,6 +217,9 @@
   }
   .w-full {
     width: 100%;
+  }
+  .min-w-10 {
+    min-width: calc(var(--spacing) * 10);
   }
   .border-collapse {
     border-collapse: collapse;
