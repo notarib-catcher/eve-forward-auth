@@ -189,6 +189,9 @@
   .left-0 {
     left: 0;
   }
+  .-z-1 {
+    z-index: calc(1 * -1);
+  }
   .-z-10 {
     z-index: calc(10 * -1);
   }
