@@ -11,7 +11,13 @@
   <body class="bg-eve-bg">
     <script type="module" src="/static/pixel-canvas.js"></script>
     <link rel="stylesheet" href="/static/app.css">
-   <style>
+<style>
+  @property --p {
+    syntax: "<percentage>";
+    inherits: false;
+    initial-value: 0%;
+  }
+
   .login-box {
     border: none !important;
     background: var(--color-eve-surface);
@@ -27,20 +33,47 @@
       var(--color-eve-border) var(--p, 0%)
     );
     z-index: -1;
-    transition: --p 0.5s ease-in-out;
+    transition: --p 0.2s ease-in-out;
   }
 
   .login-box:has(button:hover)::before {
     --p: 100%;
   }
+
 </style>
+
 <style>
-  @property --p {
-    syntax: '<percentage>';
-    inherits: false;
-    initial-value: 0%;
+  .login-overlay {
+    position: absolute;
+    inset: 0;
+    background: var(--color-eve-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  .login-overlay.active {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .login-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--color-eve-border);
+    border-top-color: var(--color-eve-red);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
   }
 </style>
+
     <div class="flex flex-col w-[100dvw] h-[100dvh] z-0 items-center justify-center">
       <div class="z-0 absolute w-full h-full top-0 left-0">
           <pixel-canvas
@@ -50,16 +83,21 @@
           data-no-focus="true"
         ></pixel-canvas>
       </div>
-      <div class="login-box flex items-center justify-center relative self-center p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 font-eve text-eve-lg text-eve-bright">
-        <button class=" hover:invert-100 transition-all duration-150" onclick="handleLogin()">
+      <div class="login-box" flex items-center justify-center relative self-center p-2 bg-eve-surface min-h-10 min-w-10 border-eve-border border-2 font-eve text-eve-lg text-eve-bright">
+        <button id="loginbtn" class="disabled:invert-25 transition-all duration-150" onclick="handleLogin()">
           <img src="/static/sso.png" height="100px" class="hover:cursor-pointer">
         </button>
+        <div class="login-overlay" id="login-overlay">
+          <div class="login-spinner"></div>
+        </div>
       </div>
 
     </div>
-    <!--  -->
+
         <script>
             function handleLogin() {
+              document.getElementById("loginbtn").disabled = true
+              document.getElementById("login-overlay").classList.add("active")
               const redirect = new URLSearchParams(window.location.search).get('redirect');
               window.location.href = './dologin' + (redirect ? '?redirect=' + encodeURIComponent(redirect) : '');
             }
