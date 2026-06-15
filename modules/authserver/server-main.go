@@ -118,7 +118,7 @@ func (a *AuthServer) StartServer() {
 
 	err := srv.ListenAndServe()
 	if err != nil {
-		a.logger.Warn("Server exited!")
+		a.logger.Warn("Server exited!", "reason", err)
 	}
 }
 
