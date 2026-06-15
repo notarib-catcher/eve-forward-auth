@@ -89,12 +89,13 @@
           </div>
         </div>
         <div class="relative">
-          <div class="grid grid-rows-2 border-eve-border border-l-2 border-r-2">
-            <div class=" relative font-family-eve text-eve-bright px-2 pt-4 text-lg w-full h-fit z-10 text-center">
+          <div class="flex flex-col border-eve-border border-l-2 border-r-2">
+            <div id ="admsg"class=" relative font-family-eve text-eve-bright px-2 pt-4 text-lg w-full h-fit z-10 text-center">
               ACCESS TO THIS RESOURCE<br>HAS BEEN <span class="text-eve-red">DENIED</span>
               <br><span class="text-xs text-eve-base">(TO THE CURRENT CHARACTER)</span>
             </div>
-            <div class=" grid grid-cols-2 gap-2 mx-2 mb-2">
+            <div id="buttons" class=" grid grid-cols-2 gap-2 mx-2 mb-2">
+
               <button id="lo-button" onclick="logmeout()" class="relative text-sm text-eve-base font-family-eve border-[1px] m-2 p-2 hover:text-eve-bright disabled:text-eve-dim transition-all duration-150">
                 LOGOUT<BR>THIS DEVICE
                 <div id="lo-spinner" class="z-20 absolute top-0 left-0 w-full h-full flex items-center justify-center backdrop-blur-md fade-in hidden">
@@ -108,6 +109,22 @@
                 </div>
               </button>
             </div>
+            <div id="redirmsg" class="relative font-family-eve text-eve-bright px-2 pt-4 text-lg w-full h-fit z-10 text-center hidden">
+              SELECTED CHARACTER<br>
+              <span class="text-eve-red">DOES NOT</span> HAVE PERMISSION<br>
+              TO ACCESS THIS RESOURCE<br>
+              <span class="text-xs text-eve-base">(YOU HAVE BEEN LOGGED OUT)</span>
+            </div>
+            <div id="redirbox" class=" w-[90%] h-fit border-eve-amber text-eve-amber border-[1px] mx-[5%] mt-2 mb-4 py-2 text-center align-middle hidden">
+              <div class=" flex flex-row items-center justify-center">
+                <span class="pulse"><b>REDIRECTING</b></span>
+                  <div class="eve-arrows align-middle">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                  </div>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -120,23 +137,6 @@
           </div>
         </div>
         </div>
-
-        
-        
-        
-      
-      <div id="msg-nocookie" class="">
-          <span class="text-danger"><b>You have not been logged in,</b></span><br>
-          as the character you selected is not permitted to access this site.<br><br>
-          Redirecting to login page (10s)...
-      </div>
-      <div id="msg-unauthorized" class="d-none">
-          You are logged in. However,<br>
-          <span class="text-danger"><b>The current character is not permitted to access this service.</b></span><br><br>
-          You may:<br>
-          <button onclick= "window.location.href='/logout?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out</button> of this session<br>
-          <button onclick= "window.location.href='/purge?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out all </button> sessions with this character.
-      </div>
     </div>
 
 <script>
@@ -145,8 +145,11 @@
     const loginUrl = '/login' + (redirect ? '?redirect=' + redirect : '');
 
     if (params.get('nocookie') === 'true') {
-        document.getElementById('msg-nocookie').classList.remove('d-none');
-        setTimeout(() => window.location.href = loginUrl, 10000);
+        document.getElementById('redirbox').classList.remove('hidden');
+        document.getElementById('redirmsg').classList.remove('hidden');
+        document.getElementById('admsg').classList.add('hidden');
+        document.getElementById('buttons').classList.add('hidden');
+        //setTimeout(() => window.location.href = loginUrl, 7000);
     } else {
         document.getElementById('msg-unauthorized').classList.remove('d-none');
         document.getElementById('msg-unauthorized').querySelector('button').onclick = function() {
@@ -176,5 +179,31 @@
 </script>
 </div>
 </div> 
+
+<style>
+  .eve-arrows {
+    display: flex;
+    gap: 1px;
+    animation: arrow-pulse 1.8s ease-in-out infinite;
+  }
+
+  .eve-arrows span {
+    display: block;
+    width: 10px;
+    height: 10px;
+    border-top: 2px solid var(--color-eve-amber);
+    border-right: 2px solid var(--color-eve-amber);
+    transform: rotate(45deg);
+  }
+
+  .pulse{
+     animation: arrow-pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes arrow-pulse {
+    0%, 100% { opacity: 0.2; }
+    50%       { opacity: 1;   }
+  }
+</style>
 </body>
 </html>
