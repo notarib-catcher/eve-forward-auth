@@ -4,42 +4,140 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ .Name }} - Forbidden</title>
+    <link rel="stylesheet" href="/static/app.css">
 </head>
   <body class=" bg-black">
     <script src="./static/pixel-canvas.js" type="module"></script>
     <!--CONTENT-->
     <style>
-      .lelement {
-        background-color: #000;
-        color: #fff;
-        transition: filter 0.3s ease;
+      body{
+        --marqueetextwidth: 210px;
+      }
+      .marquee {
+        max-width: calc(var(--marqueetextwidth) * 1.75);
+        width: 100%;
+        border: 1px solid var(--color-eve-red);
+        background-color: var(--color-eve-surface);
+        white-space: nowrap;
       }
 
-      .lelement:hover {
-        filter: invert(100%);
+      .marquee-text {
+        display: inline-block;
+        width: --var(--marqueetextwidth);
+        animation: scroll 8s linear infinite;
+        color: #a33333;
+      }
+
+      .marquee-text:before {
+        content: "/ F O R B I D D E N /";
+      }
+
+      @keyframes scroll {
+        100% {
+          transform: translateX(-100%);
+        }
       }
     </style>
-    <div id="wrapper" class="flex w-[100vw] h-[100vh] items-center justify-center align-middle">
-        <pixel-canvas
-          data-gap="10"
-          data-speed="35"
-          data-colors="#FEE6E0, #FC967D, #E9500E"
+
+    <style>
+        .forbidden-box {
+          max-width: calc(var(--marqueetextwidth) * 1.75);;
+        }
+
+        .login-spinner {
+          width: 16px;
+          height: 16px;
+          border: 2px solid var(--color-eve-border);
+          border-top-color: var(--color-eve-red);
+          border-radius: 50%;
+          animation: spin 0.7s linear infinite;
+        }
+
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+
+        @keyframes fade-in {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+
+        .fade-in {
+          animation: fade-in 0.4s ease-out forwards;
+        }
+
+  
+    </style>
+    <div id="wrapper" class="flex flex-col w-dvw h-dvh z-0 items-center justify-center">
+      <div class="z-0 absolute w-full h-full top-0 left-0">
+          <pixel-canvas
+          data-gap="15"
+          data-speed="25"
+          data-colors="#e0f2fe, #7dd3fc, #0ea5e9"
           data-no-focus="true"
         ></pixel-canvas>
-        <div class=" bg-[#00000f] p-2 absolute z-0">
-    <div id="msg-nocookie" class="">
-        <span class="text-danger"><b>You have not been logged in,</b></span><br>
-        as the character you selected is not permitted to access this site.<br><br>
-        Redirecting to login page (10s)...
+        </div>
+
+        <div class=" forbidden-box z-10 self-center align-middle 
+          
+          overflow-hidden bg-eve-surface max-md:max-w-[80%]">
+          <div class=" w-full h-fit overflow-hidden">
+          <div class="marquee z-10 ">
+            <div class="marquee-text font-family-eve"></div>
+            <div class="marquee-text font-family-eve"></div>
+            <div class="marquee-text font-family-eve"></div>          
+          </div>
+        </div>
+        <div class="relative">
+          <div class="grid grid-rows-2 border-eve-border border-l-2 border-r-2">
+            <div class=" relative font-family-eve text-eve-bright px-2 pt-4 text-lg w-full h-fit z-10 text-center">
+              ACCESS TO THIS RESOURCE<br>HAS BEEN <span class="text-eve-red">DENIED</span>
+              <br><span class="text-xs text-eve-base">(TO THE CURRENT CHARACTER)</span>
+            </div>
+            <div class=" grid grid-cols-2 gap-2 mx-2 mb-2">
+              <button id="lo-button" onclick="logmeout()" class="relative text-sm text-eve-base font-family-eve border-[1px] m-2 p-2 hover:text-eve-bright disabled:text-eve-dim transition-all duration-150">
+                LOGOUT<BR>THIS DEVICE
+                <div id="lo-spinner" class="z-20 absolute top-0 left-0 w-full h-full flex items-center justify-center backdrop-blur-md fade-in hidden">
+                  <div class="login-spinner self-center"></div>
+                </div>
+              </button>
+              <button id="fm-button" onclick="forgetme()" class="z-10 relative text-sm text-eve-base font-family-eve border-[1px] m-2 p-2 hover:text-eve-bright disabled:text-eve-dim transition-all duration-150">
+                FORGET ME<br><span class="text-[10px]">(ACROSS ALL DEVICES)</span>
+                <div id="fm-spinner" class="z-20 absolute top-0 left-0 w-full h-full flex items-center justify-center backdrop-blur-md fade-in hidden">
+                  <div class="login-spinner self-center"></div>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+
+        <div class=" w-full h-fit overflow-hidden bottom-0">
+          <div class="marquee">
+            <div class="marquee-text font-family-eve"></div>
+            <div class="marquee-text font-family-eve"></div>
+            <div class="marquee-text font-family-eve"></div>          
+          </div>
+        </div>
+        </div>
+
+        
+        
+        
+      
+      <div id="msg-nocookie" class="">
+          <span class="text-danger"><b>You have not been logged in,</b></span><br>
+          as the character you selected is not permitted to access this site.<br><br>
+          Redirecting to login page (10s)...
+      </div>
+      <div id="msg-unauthorized" class="d-none">
+          You are logged in. However,<br>
+          <span class="text-danger"><b>The current character is not permitted to access this service.</b></span><br><br>
+          You may:<br>
+          <button onclick= "window.location.href='/logout?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out</button> of this session<br>
+          <button onclick= "window.location.href='/purge?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out all </button> sessions with this character.
+      </div>
     </div>
-    <div id="msg-unauthorized" class="d-none">
-        You are logged in. However,<br>
-        <span class="text-danger"><b>The current character is not permitted to access this service.</b></span><br><br>
-        You may:<br>
-        <button onclick= "window.location.href='/logout?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out</button> of this session<br>
-        <button onclick= "window.location.href='/purge?' + new URLSearchParams(window.location.search).get('redirect') ? 'redirect=' + new URLSearchParams(window.location.search).get('redirect') : ''">Log out all </button> sessions with this character.
-    </div>
-</div>
 
 <script>
     const params = new URLSearchParams(window.location.search);
@@ -56,8 +154,27 @@
             window.location.href = loginUrl;
         };
     }
+
+    function forgetme() {
+      document.getElementById("fm-spinner").classList.remove("hidden")
+      document.getElementById("fm-button").disabled = true
+      document.getElementById("lo-button").disabled = true
+    }
+
+    function logmeout() {
+      document.getElementById("lo-spinner").classList.remove("hidden")
+      document.getElementById("lo-button").disabled = true
+      document.getElementById("fm-button").disabled = true
+    }
+
+    window.addEventListener('pageshow', () => {
+          document.getElementById('lo-button').disabled = false
+          document.getElementById('fm-button').disabled = false
+          document.getElementById("lo-spinner").classList.add("hidden")
+          document.getElementById("fm-spinner").classList.add("hidden")
+        });
 </script>
 </div>
-    </div>
+</div> 
 </body>
 </html>

@@ -1,3 +1,4 @@
+@layer theme, base, components, utilities;
 @import "tailwindcss";
 
 @theme {
@@ -33,4 +34,19 @@
   --tracking-eve-sm:    0.1em;
   --tracking-eve-md:    0.2em;
   --tracking-eve-lg:    0.35em;
+}
+
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
 }

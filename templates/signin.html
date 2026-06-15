@@ -92,19 +92,19 @@
 
     </div>
 
-        <script>
-            function handleLogin() {
-              document.getElementById("loginbtn").disabled = true
-              document.getElementById('login-overlay').classList.add('active');
-              const redirect = new URLSearchParams(window.location.search).get('redirect');
-              window.location.href = './dologin' + (redirect ? '?redirect=' + encodeURIComponent(redirect) : '');
-            }
+    <script>
+        function handleLogin() {
+          document.getElementById("loginbtn").disabled = true
+          document.getElementById('login-overlay').classList.add('active');
+          const redirect = new URLSearchParams(window.location.search).get('redirect');
+          window.location.href = './dologin' + (redirect ? '?redirect=' + encodeURIComponent(redirect) : '');
+        }
 
-            window.addEventListener('pageshow', () => {
-              document.getElementById('login-overlay').classList.remove('active');
-              document.getElementById("loginbtn").disabled = false
+        window.addEventListener('pageshow', () => {
+          document.getElementById('login-overlay').classList.remove('active');
+          document.getElementById("loginbtn").disabled = false
 
-            });
-          </script>
+        });
+      </script>
 </body>
 </html>
