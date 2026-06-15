@@ -57,6 +57,11 @@ func main() {
 		println()
 		log.Info("Received Interrupt")
 		cancel()
+		time.Sleep(1000)
+		ctxExit2, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGINT)
+		log.Warn("Send a second interrupt (Ctrl^C) to immediately kill the process")
+		<-ctxExit2.Done()
+		panic("Interrupt - Forced exit")
 	}()
 
 	log.Info("Starting services")
